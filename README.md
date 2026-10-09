@@ -28,6 +28,7 @@ Sujet complet : [`docs/sujet.pdf`](docs/sujet.pdf).
 | Historique des échanges                  | [`docs/echanges.md`](docs/echanges.md)   |
 | État de l'art                            | [`docs/etat-de-l-art.md`](docs/etat-de-l-art.md) |
 | Journal des séances, questions, idées, décisions, impact env. | [`docs/notes.md`](docs/notes.md) |
+| Propositions détaillées (PDF + source LaTeX) | [`docs/idees/`](docs/idees/) |
 | Code                                     | `src/graphdraw/`                         |
 | Exploration                              | `notebooks/`                             |
 

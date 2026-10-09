@@ -1,0 +1,307 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[french]{babel}
+\usepackage{lmodern}
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,fit,backgrounds,calc}
+\usepackage{pgfgantt}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{enumitem}
+\usepackage[most]{tcolorbox}
+\usepackage[hidelinks]{hyperref}
+
+\definecolor{accent}{HTML}{1F5FAD}
+\definecolor{warn}{HTML}{B5521B}
+\definecolor{ok}{HTML}{2E7D32}
+\definecolor{soft}{HTML}{EEF3FA}
+\definecolor{grey}{HTML}{6B7280}
+
+\setlist{itemsep=2pt,topsep=4pt}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{5pt}
+
+\newtcolorbox{resume}{colback=soft,colframe=accent,boxrule=0.8pt,arc=2pt,left=8pt,right=8pt,top=6pt,bottom=6pt}
+
+\tikzset{
+  box/.style={draw=accent,fill=soft,rounded corners=3pt,minimum height=1.1cm,align=center,font=\small,inner sep=5pt},
+  boxwarn/.style={box,draw=warn,fill=warn!8},
+  boxok/.style={box,draw=ok,fill=ok!8},
+  data/.style={draw=grey,fill=white,rounded corners=1pt,minimum height=0.9cm,align=center,font=\small,inner sep=4pt},
+  fwd/.style={-{Stealth[length=2.5mm]},thick,accent},
+  bwd/.style={-{Stealth[length=2.5mm]},thick,warn,dashed},
+}
+
+\title{\textbf{Un modèle qui dessine directement en espace écran}\\[2pt]
+\large Proposition d'orientation et plan d'action}
+\author{Melissa Colin --- projet \og Graph drawing différentiable\fg{}, ENSEIRB-MATMECA 3A}
+\date{9 octobre 2026 --- \emph{document de travail, à discuter avec l'équipe et M.~Giot}}
+
+\begin{document}
+\maketitle
+
+\begin{resume}
+\textbf{En bref}
+\begin{itemize}
+  \item \textbf{Idée} : entraîner un réseau de neurones sur graphes qui, à partir d'un graphe, \textbf{prédit directement la position de chaque nœud dans l'image finale} (coordonnées écran), au lieu d'optimiser chaque graphe séparément.
+  \item \textbf{Entraînement} : avec des fonctions de coût calculées \textbf{sur l'image rendue} (rendu différentiable par SDF), donc sur ce que l'œil voit réellement.
+  \item \textbf{Bonus de fin de projet} : affiner le modèle selon des \textbf{préférences visuelles humaines} (critère non codable), via un modèle critique appris.
+  \item \textbf{Ce que ça change dans l'organisation} : on travaille \textbf{en parallèle} sur le modèle, sur le rendu et les coûts, et sur l'évaluation, avec une interface commune fixée dès le départ.
+\end{itemize}
+\end{resume}
+
+%=====================================================================
+\section{Le problème, en une figure}
+
+Les méthodes classiques ((GD)$^2$, SGD, FORBID) optimisent un dessin dans un \textbf{espace géométrique} continu : un nœud est un point, une arête est un segment d'épaisseur nulle. Mais le dessin est finalement \textbf{affiché en pixels}, avec des nœuds de taille fixe, des arêtes épaisses et une résolution limitée. Un dessin \og bon\fg{} en géométrie peut donc être illisible à l'écran.
+
+\begin{center}
+\begin{tikzpicture}[scale=0.9]
+  % --- géométrie
+  \node[font=\small\bfseries] at (2,3.2) {Espace géométrique};
+  \fill[accent] (0.8,2.0) circle (2pt) node[above left,font=\scriptsize]{a};
+  \fill[accent] (3.2,0.6) circle (2pt) node[below right,font=\scriptsize]{b};
+  \fill[accent] (2.05,1.45) circle (2pt) node[above right,font=\scriptsize]{c};
+  \draw[accent,thin] (0.8,2.0) -- (3.2,0.6);
+  \node[font=\scriptsize,ok,align=center] at (2,-0.75) {c ne touche pas le segment [a,b]\\$\Rightarrow$ coût géométrique nul};
+  % --- écran
+  \begin{scope}[xshift=6.3cm]
+    \node[font=\small\bfseries] at (2,3.2) {Espace écran (pixels)};
+    \draw[step=0.25,grey!35,very thin] (0,0) grid (4,2.75);
+    \draw[accent!70,line width=6pt] (0.8,2.0) -- (3.2,0.6);
+    \fill[accent!85] (0.8,2.0) circle (0.32);
+    \fill[accent!85] (3.2,0.6) circle (0.32);
+    \fill[warn!85] (2.05,1.45) circle (0.32);
+    \node[font=\scriptsize,warn,align=center] at (2,-0.75) {l'arête épaisse \textbf{recouvre} le nœud c\\$\Rightarrow$ illisible, invisible pour le coût géométrique};
+  \end{scope}
+\end{tikzpicture}
+\end{center}
+
+Le sujet propose de calculer les coûts \textbf{sur l'image rendue}. Pour que le gradient remonte des pixels jusqu'aux positions, le rendu doit être \textbf{différentiable} : chaque nœud et chaque arête est décrit par une fonction de distance signée (SDF) $d(p)$, transformée en intensité douce $I(p)=\sigma(-d(p)/\varepsilon)$.
+
+%=====================================================================
+\section{L'idée proposée}
+
+\subsection{Un modèle qui pense en pixels}
+
+Plutôt que d'optimiser les positions de \emph{chaque} graphe par descente de gradient (coûteux à chaque nouveau graphe), on entraîne \textbf{une fois} un réseau qui produit le dessin \textbf{directement} :
+
+\begin{center}
+\begin{tikzpicture}[node distance=0.45cm and 0.42cm]
+  \node[data] (g) {Graphe\\\scriptsize arêtes, tailles,\\[-2pt]\scriptsize épaisseurs};
+  \node[box,right=of g] (gnn) {Encodeur\\GNN};
+  \node[data,right=of gnn] (pos) {Positions écran\\\scriptsize $(N,2)$ continues\\[-2pt]\scriptsize dans $[0,W]\times[0,H]$};
+  \node[box,right=of pos] (rend) {Rendu\\différentiable\\\scriptsize (SDF)};
+  \node[data,right=of rend] (img) {Image\\\scriptsize $H\times W$};
+  \node[boxok,above right=0.35cm and 0.6cm of img] (loss) {Coûts écran\\\scriptsize recouvrement, occlusion,\\[-2pt]\scriptsize densité\ldots};
+  \node[boxwarn,below right=0.35cm and 0.6cm of img] (crit) {Critique appris\\\scriptsize préférences humaines\\[-2pt]\scriptsize (phase 3)};
+  \draw[fwd] (g) -- (gnn);
+  \draw[fwd] (gnn) -- (pos);
+  \draw[fwd] (pos) -- (rend);
+  \draw[fwd] (rend) -- (img);
+  \draw[fwd] (img.north east) -- (loss.west);
+  \draw[fwd] (img.south east) -- (crit.west);
+  \draw[bwd] (loss.west) -| node[pos=0.25,above,font=\scriptsize,warn]{gradient (rétropropagation)} (gnn.north);
+\end{tikzpicture}
+\end{center}
+
+\begin{itemize}
+  \item \textbf{Entrée} : la structure du graphe et ses attributs (taille des nœuds, épaisseur des arêtes). Un GNN gère naturellement un nombre de nœuds variable.
+  \item \textbf{Sortie} : des coordonnées \textbf{continues} en pixels. On commence avec une taille d'image fixe, puis on étudie comment passer la résolution en entrée du modèle.
+  \item \textbf{Contraintes visuelles intégrées} : idéalement, l'architecture garantit certaines contraintes (par exemple l'absence de chevauchement) plutôt que de seulement les pénaliser.
+\end{itemize}
+
+\subsection{Trois phases d'entraînement}
+
+\begin{center}
+\begin{tikzpicture}[node distance=0.9cm]
+  \node[box,text width=4.2cm] (p1) {\textbf{1. Supervisé}\\\scriptsize imiter des dessins de référence\\[-2pt]\scriptsize (stress, sur la base Rome)\\[-2pt]\scriptsize \emph{démarrage rapide, éprouvé}};
+  \node[boxok,text width=4.2cm,right=of p1] (p2) {\textbf{2. Coûts écran}\\\scriptsize affiner avec les coûts\\[-2pt]\scriptsize calculés sur l'image rendue\\[-2pt]\scriptsize \emph{cœur du sujet}};
+  \node[boxwarn,text width=4.2cm,right=of p2] (p3) {\textbf{3. Préférences}\\\scriptsize affiner selon ce qui plaît\\[-2pt]\scriptsize visuellement (critique appris)\\[-2pt]\scriptsize \emph{bonus de fin de projet}};
+  \draw[fwd] (p1) -- (p2);
+  \draw[fwd] (p2) -- (p3);
+\end{tikzpicture}
+\end{center}
+
+\textbf{Phase 3 en détail.} On annote des \textbf{paires} de dessins (\og je préfère A à B\fg{}), on entraîne un \textbf{modèle critique} (par exemple un CNN sur l'image) à prédire ces préférences, puis on affine le modèle de dessin pour maximiser ce score, en le gardant proche du modèle de la phase 2 (pénalité de divergence) pour qu'il ne \og triche\fg{} pas. Trois façons de faire, à comparer :
+\begin{itemize}
+  \item \textbf{RL} (PPO / REINFORCE), comme le RLHF des modèles de langage : le modèle sort une distribution sur les positions, on tire des dessins, le critique les note ;
+  \item \textbf{DPO} : apprendre directement à partir des paires de préférences, sans critique ni boucle de RL ; plus stable avec peu de données ;
+  \item \textbf{rétropropagation directe} : si le critique et le rendu sont différentiables, on peut rétropropager son score jusqu'au modèle (approche de type DRaFT, nettement plus efficace que le RL quand c'est possible).
+\end{itemize}
+
+%=====================================================================
+\section{Lien avec les axes du sujet}
+
+\begin{center}
+\small
+\begin{tabularx}{\linewidth}{>{\raggedright}p{4.2cm}X}
+\toprule
+\textbf{Axe du sujet} & \textbf{Rôle dans cette proposition} \\
+\midrule
+Rendu différentiable + coûts écran & \textbf{Indispensable} : c'est ce qui entraîne le modèle (phase 2) et ce que regarde le critique (phase 3). \\
+Optimisation directe par gradient & Sert de \textbf{référence} : pour un graphe donné, la meilleure solution qu'on sait obtenir avec ces coûts. Le modèle doit s'en approcher. \\
+Modèle profond (axe \og ambitieux\fg{}) & \textbf{Cœur de la proposition}, avec la sortie en coordonnées écran et l'affinage par préférences. \\
+Comparaison aux méthodes classiques & Inchangée : on mesure le gain ou la perte par rapport aux dessins géométriques. \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+%=====================================================================
+\section{Points de vigilance et parades}
+
+\begin{center}
+\small
+\begin{tabularx}{\linewidth}{>{\raggedright}p{5cm}X}
+\toprule
+\textbf{Risque} & \textbf{Parade envisagée} \\
+\midrule
+\textbf{Pixels distincts $\neq$ pas de chevauchement} : un nœud est un disque de $r$ pixels ; deux nœuds sur des pixels voisins se recouvrent quand même. &
+La contrainte réelle est $\|c_i - c_j\| \ge r_i + r_j$. À traiter par un coût de recouvrement sur l'image, ou par une couche de projection / répulsion en sortie du réseau. \\
+\addlinespace
+\textbf{Une sortie discrète bloque le gradient} : choisir un pixel revient à un $\arg\max$, de gradient nul. &
+Sortir des coordonnées \textbf{continues} (ou des cartes de probabilité douces, Gumbel-softmax). Voir une affectation \og un nœud par case\fg{} comme un problème d'affectation différentiable (Sinkhorn). \\
+\addlinespace
+\textbf{Les arêtes ne sont pas prédites} : ce sont des segments droits entre nœuds ; occlusions et fusions de traits viennent d'elles. &
+Le modèle les contrôle \textbf{indirectement} via les nœuds ; les coûts sur l'image (occlusion arête-nœud, densité) font remonter le gradient vers les extrémités. \\
+\addlinespace
+\textbf{Mémoire et calcul} : de l'ordre de $(N+E)\times H\times W$ par graphe. &
+Petits graphes (base Rome), résolution modeste au début ; calcul des recouvrements via la carte somme $S=\sum_i I_i$ plutôt que paire par paire. \\
+\addlinespace
+\textbf{Préférences humaines} : il faut beaucoup d'annotations, et trois annotateurs ont des goûts biaisés. &
+Phase 3 traitée comme un \textbf{bonus} ; DPO ou critique préentraîné sur des métriques connues (lisibilité, cf.\ Haleem et al.) pour réduire le besoin d'annotations. \\
+\addlinespace
+\textbf{Évaluer un modèle appris est plus long} qu'une optimisation directe. &
+Une personne dédiée à l'évaluation et aux méthodes de référence dès le début. \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+%=====================================================================
+\section{Plan d'action}
+
+\subsection{Calendrier}
+
+\begin{center}
+\begin{ganttchart}[
+    hgrid, vgrid={*6{draw=none},dotted},
+    time slot format=isodate,
+    x unit=0.68mm, y unit chart=0.52cm,
+    title height=1,
+    bar/.append style={fill=accent!70,draw=accent},
+    bar height=0.55,
+    group/.append style={fill=grey!60,draw=grey},
+    milestone/.append style={fill=warn,draw=warn},
+    bar label font=\scriptsize, group label font=\scriptsize\bfseries,
+    milestone label font=\scriptsize\bfseries\color{warn},
+  ]{2026-10-05}{2027-01-31}
+  \gantttitle{Octobre}{27} \gantttitle{Novembre}{30} \gantttitle{Décembre}{31} \gantttitle{Janvier}{31} \\
+  \ganttgroup{Phase 0 --- Démarrage}{2026-10-10}{2026-10-23} \\
+  \ganttbar{État de l'art, questions à M.~Giot}{2026-10-10}{2026-10-23} \\
+  \ganttbar{Environnement, base Rome}{2026-10-10}{2026-10-20} \\
+  \ganttgroup{Phase 1 --- Briques de base}{2026-10-17}{2026-11-06} \\
+  \ganttbar{[A] GNN $\to$ positions, coût stress}{2026-10-17}{2026-11-06} \\
+  \ganttbar{[B] Rendu SDF nœuds + arêtes}{2026-10-17}{2026-11-06} \\
+  \ganttbar{[C] Méthodes de référence + métriques}{2026-10-17}{2026-11-06} \\
+  \ganttmilestone{Jalon 1}{2026-11-06} \\
+  \ganttgroup{Phase 2 --- Espace écran}{2026-11-07}{2026-12-18} \\
+  \ganttbar{[B] Coûts écran + optimisation directe}{2026-11-07}{2026-12-11} \\
+  \ganttbar{[A] Entraînement avec coûts écran}{2026-11-14}{2026-12-18} \\
+  \ganttbar{[C] Comparaisons, impact environnemental}{2026-11-14}{2026-12-18} \\
+  \ganttmilestone{Jalon 2}{2026-12-18} \\
+  \ganttgroup{Phase 3 --- Préférences (bonus)}{2026-12-19}{2027-01-17} \\
+  \ganttbar{Annotation + critique + affinage}{2026-12-19}{2027-01-17} \\
+  \ganttbar{Évaluation finale}{2027-01-04}{2027-01-20} \\
+  \ganttgroup{Phase 4 --- Soutenance}{2027-01-18}{2027-01-27} \\
+  \ganttbar{Slides (anglais), démo, répétitions}{2027-01-18}{2027-01-26} \\
+  \ganttmilestone{Soutenance}{2027-01-27}
+\end{ganttchart}
+\end{center}
+
+\subsection{Livrables visés par jalon}
+
+\begin{description}[leftmargin=2.2cm,style=nextline,font=\bfseries]
+  \item[06/11] État de l'art synthétisé ; cette proposition validée (ou réorientée) avec M.~Giot ; première image d'un graphe rendue par SDF et différentiable ; premier GNN qui sort des positions.
+  \item[18/12] Au moins deux coûts écran ; optimisation directe d'un graphe en espace écran ; modèle entraîné avec ces coûts ; première comparaison chiffrée aux méthodes classiques.
+  \item[27/01] Résultats et comparaison finale ; phase 3 si le temps le permet ; analyse d'impact environnemental ; démo.
+\end{description}
+
+\subsection{Répartition proposée (à discuter)}
+
+\begin{center}
+\small
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+\textbf{Rôle} & \textbf{Responsabilité} \\
+\midrule
+\textbf{A --- Modèle} & Architecture GNN (graphe $\to$ positions écran), entraînement supervisé puis avec coûts écran, phase 3. \\
+\textbf{B --- Rendu et coûts} & Rendu différentiable (SDF ou autre méthode si plus adaptée), coûts écran, optimisation directe d'un graphe. \\
+\textbf{C --- Données et évaluation} & Base Rome, méthodes de référence classiques, métriques, comparaisons, mesure d'impact environnemental. \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\textbf{Interface commune, à figer dès la phase 0}, pour que chacun avance sans attendre les autres :
+\begin{itemize}
+  \item le modèle produit \texttt{positions}: tenseur $(N,2)$, valeurs continues dans $[0,W]\times[0,H]$ ;
+  \item \texttt{render(positions, graphe, attributs) $\to$ image} $(C,H,W)$, différentiable ;
+  \item chaque coût : \texttt{loss(image, ...) $\to$ scalaire}.
+\end{itemize}
+En attendant le rendu (B), le rôle A s'entraîne avec un coût géométrique simple (stress) pour valider son architecture.
+
+%=====================================================================
+\section{Questions pour M.~Giot}
+\begin{enumerate}
+  \item Cette orientation (modèle appris en coordonnées écran, coûts écran comme signal d'entraînement) vous paraît-elle compatible avec vos attentes, ou préférez-vous qu'on commence par l'optimisation directe ?
+  \item Qu'attendez-vous concrètement aux jalons du 06/11 et du 18/12 ?
+  \item Les \og exemples de code\fg{} mentionnés dans le sujet : comment y accéder ?
+  \item Ressources de calcul disponibles (GPU au LaBRI ou à l'école) ?
+  \item GitHub ou GitLab pour le dépôt ?
+\end{enumerate}
+
+%=====================================================================
+\section{Ressources pour creuser}
+
+\textbf{Modèles appris pour le dessin de graphes}
+\begin{itemize}
+  \item X.~Wang, K.~Yen, Y.~Hu, H.-W.~Shen. \emph{DeepGD: A Deep Learning Framework for Graph Drawing Using GNN.} IEEE CG\&A, 2021. --- GNN entraîné directement sur des critères esthétiques.
+  \item X.~Wang et al. \emph{SmartGD: A GAN-Based Graph Drawing Framework for Diverse Aesthetic Goals.} IEEE TVCG, 2023. --- un discriminateur apprend ce qu'est un \og bon\fg{} dessin.
+  \item L.~Giovannangeli et al. \emph{Toward Efficient Deep Learning for Graph Drawing (DL4GD).} IEEE TVCG. --- référence de l'encadrant.
+\end{itemize}
+
+\textbf{Juger un dessin à partir de son image (base du critique)}
+\begin{itemize}
+  \item H.~Haleem, Y.~Wang, A.~Puri, S.~Wadhwa, H.~Qu. \emph{Evaluating the Readability of Force Directed Graph Layouts: A Deep Learning Approach.} IEEE CG\&A 39(4), 2019. --- un CNN prédit des métriques de lisibilité à partir de l'image du graphe.
+\end{itemize}
+
+\textbf{Rendu différentiable}
+\begin{itemize}
+  \item I.~Quilez. \emph{2D distance and gradient functions}, 2019. \url{https://iquilezles.org/articles/distgradfunctions2d/}
+  \item T.-M.~Li, M.~Lukáč, M.~Gharbi, J.~Ragan-Kelley. \emph{Differentiable Vector Graphics Rasterization for Editing and Learning (DiffVG).} ACM TOG, 2020. --- rasteriseur différentiable de formes vectorielles, alternative possible aux SDF.
+\end{itemize}
+
+\textbf{Optimisation géométrique (méthodes de référence)}
+\begin{itemize}
+  \item J.~X.~Zheng, S.~Pawar, D.~F.~M.~Goodman. \emph{Graph Drawing by Stochastic Gradient Descent.} IEEE TVCG, 2018.
+  \item R.~Ahmed et al. \emph{Graph Drawing via Gradient Descent, (GD)$^2$.} Graph Drawing, 2020.
+  \item L.~Giovannangeli et al. \emph{FORBID: Fast Overlap Removal By Stochastic Gradient Descent for Graph Drawing.} Graph Drawing, 2022.
+\end{itemize}
+
+\textbf{Affinage par préférences humaines}
+\begin{itemize}
+  \item P.~Christiano et al. \emph{Deep Reinforcement Learning from Human Preferences.} NeurIPS, 2017. --- l'idée fondatrice : apprendre une récompense à partir de comparaisons par paires.
+  \item L.~Ouyang et al. \emph{Training Language Models to Follow Instructions with Human Feedback (InstructGPT).} NeurIPS, 2022. --- la recette supervisé $\to$ critique $\to$ RL.
+  \item R.~Rafailov et al. \emph{Direct Preference Optimization.} NeurIPS, 2023. --- sans critique ni RL.
+  \item K.~Clark, P.~Vicol, K.~Swersky, D.~J.~Fleet. \emph{Directly Fine-Tuning Diffusion Models on Differentiable Rewards (DRaFT).} ICLR, 2024. --- rétropropager une récompense différentiable plutôt que faire du RL.
+\end{itemize}
+
+\textbf{Sorties discrètes différentiables}
+\begin{itemize}
+  \item E.~Jang, S.~Gu, B.~Poole. \emph{Categorical Reparameterization with Gumbel-Softmax.} ICLR, 2017.
+  \item G.~Mena, D.~Belanger, S.~Linderman, J.~Snoek. \emph{Learning Latent Permutations with Gumbel-Sinkhorn Networks.} ICLR, 2018.
+\end{itemize}
+
+\end{document}
