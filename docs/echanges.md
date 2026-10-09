@@ -1,28 +1,25 @@
-# 2026-10-08 — mail — démarrage du projet
+# Historique des échanges
 
-**Avec** : Romain Giot (encadrant)
+Mails et réunions avec l'encadrant (Romain Giot) et le responsable du module (Michaël Clément).
+**Le plus récent en haut.** Pour chaque échange : résumé, actions, puis texte original.
 
-## Résumé
+---
+
+## 2026-10-08 — Mail — Démarrage du projet (R. Giot)
+
+**Résumé**
 - M. Giot n'est **pas disponible les 4 prochains vendredis**.
 - Deux options : trouver un autre créneau la semaine prochaine, **ou** lui envoyer une liste de questions écrites.
-- Pour la séance du vendredi 10/10 : parcourir les références et bibliothèques du sujet et **lister ce qu'on comprend / ne comprend pas**.
+- Pour la séance du 10/10 : parcourir les références et bibliothèques du sujet et **lister ce qu'on comprend / ne comprend pas**.
 
-## Décisions / consignes reçues
-- Séance 1 en autonomie : survol de la bibliographie + liste compris / pas compris.
+**Actions**
+- [ ] Survoler les références du sujet — tous
+- [ ] Remplir la liste compris / pas compris (section « Questions pour M. Giot » de `notes.md`) — tous
+- [ ] Choisir : réunion la semaine prochaine ou envoi des questions par mail — Melissa
 
-## Actions
-- [ ] Survoler les références du sujet — @tous — ticket #…
-- [ ] Rédiger la liste compris / pas compris → `docs/idees/questions-encadrant.md` — @tous
-- [ ] Choisir : créneau de réunion la semaine prochaine **ou** envoi des questions par mail — @Melissa
+**Texte original**
 
-## Questions restées ouvertes
-- GitHub ou GitLab (le sujet mentionne GitLab) ? Voir `docs/decisions/0001-forge-git.md`.
-- Attendus pour le jalon du 06/11 ?
-- Accès aux « exemples de code » mentionnés dans le sujet ?
-
-## Texte original
-
-> **Le 8 oct. 2026 à 08:49, Melissa Colin a écrit :**
+> **Melissa Colin, 8 oct. 2026 à 08:49 :**
 >
 > Bonjour Monsieur Giot,
 >
@@ -32,7 +29,7 @@
 > Bien cordialement,
 > Mélissa Colin
 
-> **Réponse de Romain Giot :**
+> **Romain Giot :**
 >
 > Bonjour,
 > J'ai un emploi du temps assez complexe et chargé et ne suis pas disponible les 4 prochains vendredi.
@@ -43,3 +40,9 @@
 > Cordialement
 > Romain Giot
 > Associate professor/Maître de conférence IUT de Bordeaux/LaBRI
+
+---
+
+## Début octobre 2026 — Mail — Consignes du module (M. Clément)
+
+Voir [`consignes.md`](consignes.md).

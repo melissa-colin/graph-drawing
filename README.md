@@ -8,7 +8,7 @@ Projet semestriel ENSEIRB-MATMECA 3A (option IA) — 2026/2027.
 Optimiser la position des nœuds d'un graphe **directement en espace écran** :
 rendu différentiable par fonctions de distance signées (SDF 2D) → fonctions de coût
 calculées sur les pixels → descente de gradient (puis, en perspective, modèle profond).
-Sujet complet : [`docs/sujet/`](docs/sujet/).
+Sujet complet : [`docs/sujet.pdf`](docs/sujet.pdf).
 
 ## Échéances
 
@@ -20,16 +20,16 @@ Sujet complet : [`docs/sujet/`](docs/sujet/).
 
 ## Où trouver quoi
 
-| Besoin                                         | Emplacement                         |
-|------------------------------------------------|-------------------------------------|
-| Tâches, qui fait quoi                          | [Tableau Kanban](https://github.com/users/melissa-colin/projects/4) + [tickets](https://github.com/melissa-colin/graph-drawing/issues) |
-| Sujet, consignes                               | `docs/sujet/`                       |
-| Mails / réunions avec l'encadrant              | `docs/echanges/`                    |
-| Compte rendu de séance                         | `docs/journal/`                     |
-| Fiches de lecture                              | `docs/etat-de-l-art/`               |
-| Questions, idées, décisions, impact env.       | `docs/notes.md`                     |
-| Code                                           | `src/graphdraw/`                    |
-| Exploration                                    | `notebooks/`                        |
+| Besoin                                   | Fichier                                  |
+|------------------------------------------|------------------------------------------|
+| Tâches, qui fait quoi                    | [Tableau Kanban](https://github.com/users/melissa-colin/projects/4) + [tickets](https://github.com/melissa-colin/graph-drawing/issues) |
+| Sujet du projet (M. Giot)                | [`docs/sujet.pdf`](docs/sujet.pdf)       |
+| Consignes du module (M. Clément)         | [`docs/consignes.md`](docs/consignes.md) |
+| Historique des échanges                  | [`docs/echanges.md`](docs/echanges.md)   |
+| État de l'art                            | [`docs/etat-de-l-art.md`](docs/etat-de-l-art.md) |
+| Journal des séances, questions, idées, décisions, impact env. | [`docs/notes.md`](docs/notes.md) |
+| Code                                     | `src/graphdraw/`                         |
+| Exploration                              | `notebooks/`                             |
 
 Règles de travail : [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
