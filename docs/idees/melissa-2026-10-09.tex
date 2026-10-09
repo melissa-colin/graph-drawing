@@ -133,22 +133,39 @@ Plutôt que d'optimiser les positions de \emph{chaque} graphe par descente de gr
   \item \textbf{rétropropagation directe} : si le critique et le rendu sont différentiables, on peut rétropropager son score jusqu'au modèle (approche de type DRaFT, nettement plus efficace que le RL quand c'est possible).
 \end{itemize}
 
-%=====================================================================
-\section{Lien avec les axes du sujet}
+\subsection{Rendre le modèle conscient des arêtes}
+
+Les arêtes ne sont pas prédites : ce sont des segments droits entre les nœuds. Pourtant, la plupart des défauts propres à l'écran viennent d'elles (arête qui cache un nœud, traits qui fusionnent, croisements). L'idée est que le modèle \textbf{raisonne explicitement sur les arêtes} pendant qu'il place les nœuds. Deux variantes, à comparer :
 
 \begin{center}
-\small
-\begin{tabularx}{\linewidth}{>{\raggedright}p{4.2cm}X}
-\toprule
-\textbf{Axe du sujet} & \textbf{Rôle dans cette proposition} \\
-\midrule
-Rendu différentiable + coûts écran & \textbf{Indispensable} : c'est ce qui entraîne le modèle (phase 2) et ce que regarde le critique (phase 3). \\
-Optimisation directe par gradient & Sert de \textbf{référence} : pour un graphe donné, la meilleure solution qu'on sait obtenir avec ces coûts. Le modèle doit s'en approcher. \\
-Modèle profond (axe \og ambitieux\fg{}) & \textbf{Cœur de la proposition}, avec la sortie en coordonnées écran et l'affinage par préférences. \\
-Comparaison aux méthodes classiques & Inchangée : on mesure le gain ou la perte par rapport aux dessins géométriques. \\
-\bottomrule
-\end{tabularx}
+\begin{tikzpicture}[node distance=0.45cm and 0.5cm]
+  % variante A
+  \node[font=\small\bfseries] (ta) at (0,2.1) {A. Tête auxiliaire};
+  \node[box] (enc) at (0,1.0) {Encodeur GNN\\\scriptsize représentation partagée};
+  \node[data,below left=0.55cm and -0.6cm of enc] (pos) {Positions\\\scriptsize $(N,2)$};
+  \node[boxwarn,below right=0.55cm and -0.6cm of enc] (aux) {Tête arêtes\\\scriptsize défauts prédits\\[-2pt]\scriptsize par arête};
+  \draw[fwd] (enc) -- (pos);
+  \draw[fwd] (enc) -- (aux);
+  \node[font=\scriptsize,warn,below=0.15cm of aux,align=center] {perte auxiliaire\\(entraînement seul)};
+  % variante B
+  \begin{scope}[xshift=8.2cm]
+    \node[font=\small\bfseries] at (0,2.1) {B. Raffinement itératif};
+    \node[box] (p1) at (-2.3,1.0) {Passe 1\\\scriptsize positions};
+    \node[boxok] (calc) at (0,-0.5) {Calcul exact\\\scriptsize des défauts\\[-2pt]\scriptsize par arête};
+    \node[box] (p2) at (2.3,1.0) {Passe 2\\\scriptsize attention\\[-2pt]\scriptsize + attributs d'arêtes};
+    \draw[fwd] (p1) |- (calc);
+    \draw[fwd] (calc) -| (p2);
+    \draw[fwd] (p1) -- node[above,font=\scriptsize]{positions} (p2);
+  \end{scope}
+\end{tikzpicture}
 \end{center}
+
+\begin{itemize}
+  \item \textbf{A. Tête auxiliaire (multi-tâche).} Une tête supplémentaire prédit, \textbf{pour chaque arête}, ses défauts dans le dessin final : nombre de croisements, occlusion d'un nœud, longueur à l'écran. Elle est entraînée par une perte auxiliaire (cible calculée exactement sur le dessin produit) et ne sert qu'à l'entraînement. Elle force la représentation partagée à \og comprendre\fg{} les arêtes, et ses prédictions peuvent aussi être réinjectées dans l'attention.
+  \item \textbf{B. Raffinement itératif.} Le modèle propose des positions, on \textbf{calcule exactement} les défauts de chaque arête (peu coûteux), puis on les fournit comme attributs d'arêtes à une seconde passe qui corrige. Pas d'approximation apprise, mais deux passes ou plus.
+\end{itemize}
+
+\textbf{Hypothèse à tester.} Le coût calculé sur l'image pénalise déjà les défauts d'arêtes. La question est donc de savoir si rendre cette information \emph{explicite} accélère l'apprentissage ou améliore le résultat. Protocole : comparer le modèle de base, la variante A et la variante B sur les mêmes graphes et les mêmes métriques (\emph{ablation}).
 
 %=====================================================================
 \section{Points de vigilance et parades}
@@ -166,7 +183,7 @@ La contrainte réelle est $\|c_i - c_j\| \ge r_i + r_j$. À traiter par un coût
 Sortir des coordonnées \textbf{continues} (ou des cartes de probabilité douces, Gumbel-softmax). Voir une affectation \og un nœud par case\fg{} comme un problème d'affectation différentiable (Sinkhorn). \\
 \addlinespace
 \textbf{Les arêtes ne sont pas prédites} : ce sont des segments droits entre nœuds ; occlusions et fusions de traits viennent d'elles. &
-Le modèle les contrôle \textbf{indirectement} via les nœuds ; les coûts sur l'image (occlusion arête-nœud, densité) font remonter le gradient vers les extrémités. \\
+Le modèle les contrôle \textbf{indirectement} via les nœuds ; les coûts sur l'image (occlusion arête-nœud, densité) font remonter le gradient vers les extrémités. En plus : tête auxiliaire ou raffinement itératif (section 2.3). \\
 \addlinespace
 \textbf{Mémoire et calcul} : de l'ordre de $(N+E)\times H\times W$ par graphe. &
 Petits graphes (base Rome), résolution modeste au début ; calcul des recouvrements via la carte somme $S=\sum_i I_i$ plutôt que paire par paire. \\
@@ -221,14 +238,6 @@ Une personne dédiée à l'évaluation et aux méthodes de référence dès le d
 \end{ganttchart}
 \end{center}
 
-\subsection{Livrables visés par jalon}
-
-\begin{description}[leftmargin=2.2cm,style=nextline,font=\bfseries]
-  \item[06/11] État de l'art synthétisé ; cette proposition validée (ou réorientée) avec M.~Giot ; première image d'un graphe rendue par SDF et différentiable ; premier GNN qui sort des positions.
-  \item[18/12] Au moins deux coûts écran ; optimisation directe d'un graphe en espace écran ; modèle entraîné avec ces coûts ; première comparaison chiffrée aux méthodes classiques.
-  \item[27/01] Résultats et comparaison finale ; phase 3 si le temps le permet ; analyse d'impact environnemental ; démo.
-\end{description}
-
 \subsection{Répartition proposée (à discuter)}
 
 \begin{center}
@@ -251,16 +260,6 @@ Une personne dédiée à l'évaluation et aux méthodes de référence dès le d
   \item chaque coût : \texttt{loss(image, ...) $\to$ scalaire}.
 \end{itemize}
 En attendant le rendu (B), le rôle A s'entraîne avec un coût géométrique simple (stress) pour valider son architecture.
-
-%=====================================================================
-\section{Questions pour M.~Giot}
-\begin{enumerate}
-  \item Cette orientation (modèle appris en coordonnées écran, coûts écran comme signal d'entraînement) vous paraît-elle compatible avec vos attentes, ou préférez-vous qu'on commence par l'optimisation directe ?
-  \item Qu'attendez-vous concrètement aux jalons du 06/11 et du 18/12 ?
-  \item Les \og exemples de code\fg{} mentionnés dans le sujet : comment y accéder ?
-  \item Ressources de calcul disponibles (GPU au LaBRI ou à l'école) ?
-  \item GitHub ou GitLab pour le dépôt ?
-\end{enumerate}
 
 %=====================================================================
 \section{Ressources pour creuser}
@@ -296,6 +295,12 @@ En attendant le rendu (B), le rôle A s'entraîne avec un coût géométrique si
   \item L.~Ouyang et al. \emph{Training Language Models to Follow Instructions with Human Feedback (InstructGPT).} NeurIPS, 2022. --- la recette supervisé $\to$ critique $\to$ RL.
   \item R.~Rafailov et al. \emph{Direct Preference Optimization.} NeurIPS, 2023. --- sans critique ni RL.
   \item K.~Clark, P.~Vicol, K.~Swersky, D.~J.~Fleet. \emph{Directly Fine-Tuning Diffusion Models on Differentiable Rewards (DRaFT).} ICLR, 2024. --- rétropropager une récompense différentiable plutôt que faire du RL.
+\end{itemize}
+
+\textbf{Architecture : arêtes et tâches auxiliaires}
+\begin{itemize}
+  \item V.~P.~Dwivedi, X.~Bresson. \emph{A Generalization of Transformer Networks to Graphs.} AAAI Workshop on Deep Learning on Graphs, 2021. --- attention sur graphes intégrant des attributs d'arêtes (variante B).
+  \item M.~Jaderberg et al. \emph{Reinforcement Learning with Unsupervised Auxiliary Tasks.} ICLR, 2017. --- des tâches auxiliaires pour enrichir la représentation partagée (variante A).
 \end{itemize}
 
 \textbf{Sorties discrètes différentiables}
