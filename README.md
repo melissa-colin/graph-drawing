@@ -12,48 +12,32 @@ Sujet complet : [`docs/sujet/`](docs/sujet/).
 
 ## Échéances
 
-| Date       | Jalon                                         |
-|------------|-----------------------------------------------|
-| 06/11/2026 | Jalon 1 (+ slides d'avancement à M. Clément)  |
-| 18/12/2026 | Jalon 2 (+ slides d'avancement)               |
-| 27/01/2027 | Soutenance (anglais) + démo + impact environnemental |
+| Date       | Jalon                                                    |
+|------------|----------------------------------------------------------|
+| 06/11/2026 | Jalon 1 + slides d'avancement à M. Clément               |
+| 18/12/2026 | Jalon 2 + slides d'avancement à M. Clément               |
+| 27/01/2027 | Soutenance en anglais + démo + 1–2 slides impact environnemental |
 
 ## Où trouver quoi
 
-| Besoin                                  | Emplacement                          |
-|-----------------------------------------|--------------------------------------|
-| Tâches, qui fait quoi, avancement       | Tickets + tableau du projet GitHub   |
-| Sujet, consignes                        | `docs/sujet/`                        |
-| Mails / réunions avec l'encadrant       | `docs/echanges/`                     |
-| Compte rendu de chaque séance           | `docs/journal/`                      |
-| Choix techniques et leur justification  | `docs/decisions/`                    |
-| État de l'art (fiches de lecture)       | `docs/etat-de-l-art/`                |
-| Idées, questions ouvertes               | `docs/idees/`                        |
-| Slides de jalons                        | `docs/jalons/`                       |
-| Impact environnemental                  | `docs/impact-env/`                   |
-| Code                                    | `src/graphdraw/`                     |
-| Exploration                             | `notebooks/`                         |
-| Expériences (configs + résultats)       | `experiments/`                       |
+| Besoin                                         | Emplacement                         |
+|------------------------------------------------|-------------------------------------|
+| Tâches, qui fait quoi                          | Tickets + tableau du projet GitHub  |
+| Sujet, consignes                               | `docs/sujet/`                       |
+| Mails / réunions avec l'encadrant              | `docs/echanges/`                    |
+| Compte rendu de séance                         | `docs/journal/`                     |
+| Fiches de lecture                              | `docs/etat-de-l-art/`               |
+| Questions, idées, décisions, impact env.       | `docs/notes.md`                     |
+| Code                                           | `src/graphdraw/`                    |
+| Exploration                                    | `notebooks/`                        |
 
 Règles de travail : [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Installation
 
 ```bash
-git clone <url-du-depot> && cd graph-drawing
-uv sync              # crée .venv et installe les dépendances
-uv run pytest        # vérifie que tout tourne
+git clone git@github.com:melissa-colin/graph-drawing.git && cd graph-drawing
+uv sync        # installe les bibliothèques listées dans pyproject.toml
 ```
 
-Les données (base Rome) vont dans `data/` et ne sont pas versionnées.
-
-## Structure du code
-
-```
-src/graphdraw/
-├── sdf/      # rendu différentiable : SDF des nœuds et arêtes → cartes d'activation
-├── losses/   # fonctions de coût en espace écran (recouvrement, collisions, lisibilité…)
-├── optim/    # plongement par descente de gradient
-├── models/   # plongement par réseau de neurones (perspective)
-└── eval/     # métriques classiques + comparaison aux méthodes de référence
-```
+La base Rome va dans `data/` (non versionnée).

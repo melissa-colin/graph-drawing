@@ -1,27 +1,18 @@
 # Python
 __pycache__/
-*.py[cod]
-*.egg-info/
 .venv/
-.pytest_cache/
-.ruff_cache/
-
-# Notebooks
 .ipynb_checkpoints/
 
-# Données et sorties lourdes
+# Données (lourdes, non versionnées)
 data/*
 !data/.gitkeep
-experiments/results/**/*.pt
-experiments/results/**/*.npy
-*.ckpt
-
-# Éditeurs / OS
-.vscode/
-.idea/
-.DS_Store
 
 # Fichiers d'origine (contenu repris dans docs/sujet et docs/echanges)
 /01-projet-graph-drawing.pdf
 /consignes.txt
 /echanges_history.txt
+
+# Éditeurs / OS
+.vscode/
+.idea/
+.DS_Store
