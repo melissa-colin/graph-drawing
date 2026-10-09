@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Données et sorties lourdes
+data/*
+!data/.gitkeep
+experiments/results/**/*.pt
+experiments/results/**/*.npy
+*.ckpt
+
+# Éditeurs / OS
+.vscode/
+.idea/
+.DS_Store
