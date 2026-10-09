@@ -7,11 +7,6 @@ __pycache__/
 data/*
 !data/.gitkeep
 
-# Fichiers d'origine (contenu repris dans docs/sujet et docs/echanges)
-/01-projet-graph-drawing.pdf
-/consignes.txt
-/echanges_history.txt
-
 # Éditeurs / OS
 .vscode/
 .idea/
