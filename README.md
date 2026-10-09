@@ -22,7 +22,7 @@ Sujet complet : [`docs/sujet/`](docs/sujet/).
 
 | Besoin                                         | Emplacement                         |
 |------------------------------------------------|-------------------------------------|
-| Tâches, qui fait quoi                          | Tickets + tableau du projet GitHub  |
+| Tâches, qui fait quoi                          | [Tableau Kanban](https://github.com/users/melissa-colin/projects/4) + [tickets](https://github.com/melissa-colin/graph-drawing/issues) |
 | Sujet, consignes                               | `docs/sujet/`                       |
 | Mails / réunions avec l'encadrant              | `docs/echanges/`                    |
 | Compte rendu de séance                         | `docs/journal/`                     |
