@@ -20,3 +20,8 @@ experiments/results/**/*.npy
 .vscode/
 .idea/
 .DS_Store
+
+# Fichiers d'origine (contenu repris dans docs/sujet et docs/echanges)
+/01-projet-graph-drawing.pdf
+/consignes.txt
+/echanges_history.txt
