@@ -1,9 +1,7 @@
-"""Format de sortie commun : un dessin, c'est-à-dire des positions dans une image de taille fixée.
+"""Output format : a drawing, i.e. positions in a fixed-size image.
 
-Conventions (valables partout : modèle, rendu, métriques, export) :
-- unité : le pixel ; les coordonnées sont continues (pas arrondies) ;
-- origine en haut à gauche de l'image, x vers la droite, y vers le BAS (convention image) ;
-- positions[i] est la position du nœud d'indice i, c'est-à-dire du nœud graph.node_ids[i].
+Unit: pixel and continuous coordinates (not rounded)
+origin: top-left corner of the image
 """
 
 import json
@@ -18,20 +16,20 @@ from data.input import GraphInput
 
 @dataclass
 class Layout:
-    positions: torch.Tensor
+    positions: torch.Tensor # (N, 2) float : position of each node in the image, in pixels
     width: int
     height: int
 
 
 def _edge_pairs(edge_index):
-    """Retourne les arêtes sous forme [(i, j), ...] pour edge_index en (2, E)."""
+    """Returns a list of (i, j) pairs for each edge in edge_index."""
     if getattr(edge_index, "ndim", 0) != 2 or edge_index.shape[0] != 2:
         raise ValueError(f"edge_index doit avoir la forme (2, E), got shape={tuple(edge_index.shape)}")
     return edge_index.t().tolist()
 
 
 def save_png(layout: Layout, graph: GraphInput, path: Path) -> None:
-    """Enregistre le dessin en image, pour le regarder."""
+    """Save a drawing of the graph in a PNG file, using the layout positions."""
     positions = layout.positions.detach().cpu().tolist()
     img = Image.new("RGB", (layout.width, layout.height), "white")
     draw = ImageDraw.Draw(img)
@@ -48,7 +46,7 @@ def save_png(layout: Layout, graph: GraphInput, path: Path) -> None:
 
 
 def save_positions(layout: Layout, graph: GraphInput, path: Path) -> None:
-    """Enregistre le dessin en JSON, avec tout ce qu'il faut pour le réafficher à l'identique."""
+    """Save the layout positions in a JSON file, using the format specified in the project description."""
     positions = layout.positions.detach().cpu().tolist()
     data = {
         "width": layout.width,
@@ -60,22 +58,3 @@ def save_positions(layout: Layout, graph: GraphInput, path: Path) -> None:
     }
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
-
-
-if __name__ == "__main__":
-    exemple_graph = GraphInput(
-        name="exemple",
-        node_ids=["n0", "n1", "n2", "n3"],
-        edge_index=torch.tensor([[0, 1, 0], [1, 2, 3]]),
-        x=torch.rand(4, 5),
-        node_size=torch.tensor([5.0, 6.0, 7.0, 8.0]),
-        dist=torch.rand(4, 4),
-        edge_width=2.0,
-    )
-    exemple_layout = Layout(
-        positions=torch.tensor([[100.0, 100.0], [200.0, 150.0], [150.0, 250.0], [300.0, 300.0]]),
-        width=400,
-        height=400,
-    )
-    save_png(exemple_layout, exemple_graph, Path("exemple.png"))
-    save_positions(exemple_layout, exemple_graph, Path("exemple.json"))
