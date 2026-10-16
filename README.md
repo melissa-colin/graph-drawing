@@ -29,7 +29,7 @@ Sujet complet : [`docs/sujet.pdf`](docs/sujet.pdf).
 | État de l'art                            | [`docs/etat-de-l-art.md`](docs/etat-de-l-art.md) |
 | Journal des séances, questions, idées, décisions, impact env. | [`docs/notes.md`](docs/notes.md) |
 | Propositions détaillées (PDF + source LaTeX) | [`docs/idees/`](docs/idees/) |
-| Code                                     | `src/graphdraw/`                         |
+| Code (lancer depuis la racine : `python src/train.py`) | `src/` |
 
 ## Installation
 
