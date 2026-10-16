@@ -30,15 +30,11 @@ Sujet complet : [`docs/sujet.pdf`](docs/sujet.pdf).
 | Journal des séances, questions, idées, décisions, impact env. | [`docs/notes.md`](docs/notes.md) |
 | Propositions détaillées (PDF + source LaTeX) | [`docs/idees/`](docs/idees/) |
 | Code                                     | `src/graphdraw/`                         |
-| Exploration                              | `notebooks/`                             |
-
-Règles de travail : [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Installation
 
 ```bash
 git clone git@github.com:melissa-colin/graph-drawing.git && cd graph-drawing
-uv sync        # installe les bibliothèques listées dans pyproject.toml
 ```
 
 La base Rome va dans `data/` (non versionnée).
