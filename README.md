@@ -35,6 +35,7 @@ Sujet complet : [`docs/sujet.pdf`](docs/sujet.pdf).
 
 ```bash
 git clone git@github.com:melissa-colin/graph-drawing.git && cd graph-drawing
+pip install -r requirements.txt   # versions figées, Python 3.13
 ```
 
 La base Rome va dans `data/` (non versionnée).
