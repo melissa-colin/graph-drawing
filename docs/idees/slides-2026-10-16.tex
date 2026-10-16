@@ -1,0 +1,252 @@
+\documentclass[aspectratio=169,11pt]{beamer}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[french]{babel}
+\usepackage{lmodern}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,calc}
+
+\usetheme[progressbar=frametitle,numbering=fraction]{metropolis}
+
+\definecolor{nuit}{HTML}{14213D}
+\definecolor{papier}{HTML}{F7F6F2}
+\definecolor{bleu}{HTML}{1F5FAD}
+\definecolor{bleuclair}{HTML}{DCE7F6}
+\definecolor{orange}{HTML}{C2581F}
+\definecolor{orangeclair}{HTML}{F6E6DA}
+\definecolor{vert}{HTML}{2E7D32}
+\definecolor{gris}{HTML}{4A5568}
+\definecolor{trait}{HTML}{DDD8CC}
+
+\setbeamercolor{normal text}{fg=nuit,bg=papier}
+\setbeamercolor{frametitle}{fg=papier,bg=nuit}
+\setbeamercolor{progress bar}{fg=bleu,bg=bleuclair}
+\setbeamercolor{alerted text}{fg=orange}
+\setbeamercolor{title separator}{fg=bleu}
+\setbeamercolor{background canvas}{bg=papier}
+
+\tikzset{
+  carte/.style={draw=trait,fill=white,rounded corners=4pt,align=center,inner sep=6pt,font=\small},
+  fleche/.style={-{Stealth[length=2.5mm]},thick,bleu},
+}
+
+\title{Dessiner un graphe directement en espace écran}
+\subtitle{Notre proposition d'orientation et nos questions}
+\author{Melissa Colin \and Quentin Lopez \and Yani}
+\institute{ENSEIRB-MATMECA 3A, projet semestriel \quad·\quad Encadrant : Romain Giot (LaBRI)}
+\date{Octobre 2026}
+
+\begin{document}
+
+\maketitle
+
+%---------------------------------------------------------------------
+\begin{frame}{Le problème : optimal en géométrie, illisible à l'écran}
+\begin{columns}[T]
+\begin{column}{0.48\textwidth}
+\centering\textbf{Espace géométrique}\\[4pt]
+\begin{tikzpicture}[scale=0.72]
+  \draw[bleu,thin] (0.4,0.4) -- (5.6,3.0);
+  \fill[bleu] (0.4,0.4) circle (2.5pt);
+  \fill[bleu] (5.6,3.0) circle (2.5pt);
+  \fill[orange] (3.0,2.15) circle (2.5pt);
+\end{tikzpicture}\\[4pt]
+\small\color{gris} Le nœud orange ne touche pas le segment :\\ le coût géométrique est nul.
+\end{column}
+\begin{column}{0.48\textwidth}
+\centering\textbf{Espace écran (pixels)}\\[4pt]
+\begin{tikzpicture}[scale=0.72]
+  \draw[step=0.3,trait,very thin] (0,0) grid (6,3.3);
+  \draw[bleu!55,line width=7pt,line cap=round] (0.4,0.4) -- (5.6,3.0);
+  \fill[bleu] (0.4,0.4) circle (0.32);
+  \fill[bleu] (5.6,3.0) circle (0.32);
+  \fill[orange] (3.0,2.15) circle (0.32);
+\end{tikzpicture}\\[4pt]
+\small\color{gris} Une fois rendue, l'arête épaisse\\ recouvre le nœud orange.
+\end{column}
+\end{columns}
+\vspace{10pt}
+Les méthodes classiques ((GD)$^2$, SGD, FORBID) optimisent des points et des segments sans épaisseur. Le sujet propose de calculer les coûts \alert{sur l'image rendue}.
+\end{frame}
+
+%---------------------------------------------------------------------
+\begin{frame}{Notre idée : un réseau qui place les nœuds directement en pixels}
+\centering
+\begin{tikzpicture}[node distance=0.32cm]
+  \node[carte] (g) {\textbf{Graphe}\\\scriptsize nœuds, arêtes, tailles};
+  \node[carte,right=of g,fill=bleuclair,draw=bleu] (gnn) {\textbf{GNN}\\\scriptsize le modèle appris};
+  \node[carte,right=of gnn] (pos) {\textbf{Positions}\\\scriptsize $(N,2)$ en pixels};
+  \node[carte,right=of pos] (rend) {\textbf{Rendu SDF}\\\scriptsize différentiable};
+  \node[carte,right=of rend,fill=orangeclair,draw=orange] (cout) {\textbf{Coûts écran}\\\scriptsize calculés sur l'image};
+  \draw[fleche] (g) -- (gnn);
+  \draw[fleche] (gnn) -- (pos);
+  \draw[fleche] (pos) -- (rend);
+  \draw[fleche] (rend) -- (cout);
+  \draw[-{Stealth[length=2.5mm]},thick,orange,dashed] (cout.south) -- ++(0,-0.55) -| node[pos=0.25,below,font=\scriptsize]{le gradient remonte jusqu'aux poids du GNN} (gnn.south);
+\end{tikzpicture}
+\vspace{14pt}
+
+\begin{columns}[T]
+\begin{column}{0.31\textwidth}
+\textbf{Entraîné une fois}\\
+\small\color{gris} Un nouveau graphe se dessine en un seul passage, sans optimisation propre à chaque graphe.
+\end{column}
+\begin{column}{0.31\textwidth}
+\textbf{Sortie continue}\\
+\small\color{gris} Des coordonnées réelles dans l'image, pour que le gradient passe.
+\end{column}
+\begin{column}{0.31\textwidth}
+\textbf{Taille variable}\\
+\small\color{gris} Un GNN accepte des graphes de 13 à 100 nœuds, comme ceux de Rome.
+\end{column}
+\end{columns}
+\end{frame}
+
+%---------------------------------------------------------------------
+\begin{frame}{Entraînement : sans dessins de référence, en trois phases}
+\centering
+\begin{tikzpicture}[node distance=0.45cm]
+  \node[carte,text width=3.9cm,draw=bleu,line width=0.8pt] (p1) {\textcolor{bleu}{\scriptsize PHASE 1}\\\textbf{Préentraînement}\\[2pt]\scriptsize Le stress seul, calculé à partir des distances dans le graphe : une structure globale correcte.};
+  \node[carte,text width=3.9cm,draw=vert,line width=0.8pt,right=of p1] (p2) {\textcolor{vert}{\scriptsize PHASE 2 · CŒUR DU SUJET}\\\textbf{Coûts écran}\\[2pt]\scriptsize Chevauchement, occlusion arête-nœud et densité, calculés sur l'image rendue.};
+  \node[carte,text width=3.9cm,draw=orange,line width=0.8pt,right=of p2] (p3) {\textcolor{orange}{\scriptsize PHASE 3 · BONUS}\\\textbf{Préférences}\\[2pt]\scriptsize Un critique appris sur nos comparaisons, puis un affinage par RL, DPO ou rétropropagation directe.};
+  \draw[fleche] (p1) -- (p2);
+  \draw[fleche] (p2) -- (p3);
+\end{tikzpicture}
+\vspace{14pt}
+
+\raggedright
+\textbf{Pourquoi commencer par le stress.} Loin du bord d'une forme, la sigmoïde des SDF est plate : un réseau qui place ses nœuds au hasard ne recevrait presque aucun gradient des coûts écran. DeepGD entraîne déjà un GNN de cette façon, sans supervision.
+\end{frame}
+
+%---------------------------------------------------------------------
+\begin{frame}{Une piste à tester : rendre le modèle attentif aux arêtes}
+Les arêtes ne sont pas prédites : ce sont des segments entre les nœuds. Pourtant, la plupart des défauts à l'écran viennent d'elles.
+\vspace{8pt}
+
+\begin{columns}[T]
+\begin{column}{0.48\textwidth}
+\begin{block}{A. Tête auxiliaire}
+\small Une tête en plus prédit les défauts de chaque arête (croisements, nœud caché, longueur). Entraînée par une perte auxiliaire, elle oblige le GNN à \og comprendre\fg{} les arêtes.
+\end{block}
+\end{column}
+\begin{column}{0.48\textwidth}
+\begin{block}{B. Raffinement itératif}
+\small Une première passe propose des positions. On calcule exactement les défauts de chaque arête, puis une seconde passe les reçoit dans son attention et corrige.
+\end{block}
+\end{column}
+\end{columns}
+\vspace{10pt}
+
+\begin{exampleblock}{Hypothèse}
+On compare le modèle de base, A et B sur les mêmes graphes (ablation).
+\end{exampleblock}
+\end{frame}
+
+%---------------------------------------------------------------------
+\begin{frame}{Points de vigilance : les risques et nos parades}
+\small
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X}
+\toprule
+\textbf{Risque} & \textbf{Parade} \\
+\midrule
+Deux nœuds sur des pixels voisins se recouvrent quand même & Contrainte réelle : distance des centres $\ge r_i + r_j$ \\
+\addlinespace
+Choisir un pixel ($\arg\max$) bloque le gradient & Sortie en coordonnées continues \\
+\addlinespace
+Mémoire de l'ordre de $(N+E)\times H\times W$ & Petits graphes (Rome : 13 à 100 nœuds), carte somme $S=\sum_i I_i$ \\
+\addlinespace
+Gradients des SDF presque nuls loin des formes & Préentraînement par le stress \\
+\addlinespace
+Préférences : beaucoup d'annotations & Phase 3 en bonus, DPO ou critique préentraîné \\
+\bottomrule
+\end{tabularx}
+\end{frame}
+
+%---------------------------------------------------------------------
+{
+\setbeamercolor{background canvas}{bg=bleu}
+\begin{frame}[plain]
+\color{papier}
+\vfill
+\centering
+{\Large\bfseries Un modèle évalué avec ce qu'il minimise gagne forcément.}\\[4pt]
+{\small\color{bleuclair} Loi de Goodhart : quand une mesure devient un objectif, elle cesse d'être une bonne mesure.}
+
+\vspace{22pt}
+\begin{columns}[T]
+\begin{column}{0.42\textwidth}
+\raggedright\textbf{Des métriques hors de la loss}\\[2pt]
+{\small\color{bleuclair} Par exemple les croisements, si on ne les optimise pas, et des métriques de lisibilité de la littérature.}
+\end{column}
+\begin{column}{0.42\textwidth}
+\raggedright\textbf{Des méthodes de référence}\\[2pt]
+{\small\color{bleuclair} Kamada-Kawai, SGD, FORBID sur les mêmes graphes, toutes mesurées sur le rendu final.}
+\end{column}
+\end{columns}
+\vfill
+\end{frame}
+}
+
+%---------------------------------------------------------------------
+\begin{frame}{Organisation : trois rôles, un contrat commun}
+\begin{columns}[T]
+\begin{column}{0.56\textwidth}
+\textbf{A. Modèle (Melissa)}\\
+{\small\color{gris} GNN, préentraînement par le stress, inférence}\\[8pt]
+\textbf{B. Rendu et données}\\
+{\small\color{gris} Rendu SDF différentiable, chargement de Rome, boucle d'entraînement}\\[8pt]
+\textbf{C. Loss et évaluation}\\
+{\small\color{gris} Métriques, loss, comparaison aux méthodes de référence}
+\end{column}
+\begin{column}{0.40\textwidth}
+\begin{beamercolorbox}[rounded=true,sep=8pt]{frametitle}
+\scriptsize\textcolor{bleuclair}{LE CONTRAT, DÉJÀ DANS LE CODE}\\[4pt]
+\ttfamily\small
+GraphInput\\
+\ \ edge\_index (2, E)\\
+\ \ node\_size\ \ (N,)\\
+\ \ dist\ \ \ \ \ \ \ (N, N)\\[4pt]
+Layout\\
+\ \ positions (N, 2)\\
+\ \ width, height
+\end{beamercolorbox}
+\end{column}
+\end{columns}
+\vspace{12pt}
+
+\centering
+\colorbox{bleuclair}{\strut\ 06/11 · Jalon 1\ }\quad
+\colorbox{bleuclair}{\strut\ 18/12 · Jalon 2\ }\quad
+\colorbox{orangeclair}{\strut\ 27/01 · Soutenance\ }
+\end{frame}
+
+%---------------------------------------------------------------------
+\begin{frame}{Nos questions (1/2) : orientation et évaluation}
+\small
+\begin{enumerate}
+\setlength{\itemsep}{5pt}
+\item Un modèle appris, sans supervision, qui dessine en coordonnées écran : cette orientation vous convient-elle, ou faut-il commencer par l'optimisation directe d'un graphe ?
+\item Quelles entrées viser au départ : la structure et la taille des nœuds, ou aussi épaisseurs, couleurs et formes ?
+\item Quelle taille de graphes, quelle résolution d'image et quel temps de calcul vous paraissent raisonnables ?
+\item Quelles métriques et quel protocole pour comparer un dessin optimisé en espace écran à un dessin géométrique ?
+\item Quelles méthodes de référence comparer en priorité, et avec quelles implémentations ?
+\end{enumerate}
+\end{frame}
+
+%---------------------------------------------------------------------
+\begin{frame}{Nos questions (2/2) : organisation et rendus}
+\small
+\begin{enumerate}
+\setcounter{enumi}{5}
+\setlength{\itemsep}{6pt}
+\item Qu'attendez-vous aux jalons du 06/11 et du 18/12 ? Un état de l'art écrit, ou seulement à l'oral ?
+\item Quels livrables finaux : le code seul, un notebook de démonstration, un rapport ?
+\item Le sujet mentionne des exemples de code : comment y accéder ?
+\item Avons-nous accès à des GPU (LaBRI ou école), ou travaillons-nous sur nos machines ?
+\item Le sujet cite GitLab : est-il obligatoire, ou un dépôt GitHub privé avec accès pour vous convient-il ?
+\end{enumerate}
+\end{frame}
+
+\end{document}

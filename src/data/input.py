@@ -12,10 +12,12 @@ import torch
 @dataclass
 class GraphInput:
     name: str                 # nom du fichier sans extension, ex. "grafo2774.26"
+    node_ids: list[str]       # identifiant d'origine de chaque nœud ("n0", "n14"...) ; node_ids[i] = nœud d'indice i
     edge_index: torch.Tensor  # (2, E) long : chaque colonne est une arête [source, cible], nœuds numérotés 0..N-1
     x: torch.Tensor           # (N, F) float : attributs des nœuds donnés au modèle
     node_size: torch.Tensor   # (N,) float : rayon de chaque nœud, en pixels
     dist: torch.Tensor        # (N, N) float : plus courts chemins dans le graphe (utilisé par le stress)
+    edge_width: float = 1.0   # largeur des arêtes, en pixels
 
     @property
     def num_nodes(self) -> int:
@@ -27,7 +29,8 @@ def load_graphml(path: Path, node_size: float = 4.0) -> GraphInput:
 
     À décider en équipe : edge_index contient-il chaque arête une fois, ou dans les deux sens ?
     """
-    # TODO(rôle B) : nx.read_graphml, renuméroter les nœuds 0..N-1, construire edge_index, dist, x
+    # TODO(rôle B) : nx.read_graphml, renuméroter les nœuds 0..N-1 (garder la correspondance dans node_ids),
+    #                construire edge_index, dist, x
     raise NotImplementedError
 
 
