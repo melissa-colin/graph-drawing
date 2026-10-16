@@ -114,13 +114,15 @@ Ce qui m'intéresse le plus : que l'architecture garantisse certaines contrainte
 
 \begin{center}
 \begin{tikzpicture}[node distance=0.9cm]
-  \node[box,text width=4.2cm] (p1) {\textbf{1. Supervisé}\\\scriptsize imiter des dessins de référence\\[-2pt]\scriptsize (stress, sur la base Rome)\\[-2pt]\scriptsize \emph{démarrage rapide, éprouvé}};
+  \node[box,text width=4.2cm] (p1) {\textbf{1. Préentraînement}\\\scriptsize stress seul, sans supervision\\[-2pt]\scriptsize (graphes de la base Rome)\\[-2pt]\scriptsize \emph{structure globale}};
   \node[boxok,text width=4.2cm,right=of p1] (p2) {\textbf{2. Coûts écran}\\\scriptsize affiner avec les coûts\\[-2pt]\scriptsize calculés sur l'image rendue\\[-2pt]\scriptsize \emph{cœur du sujet}};
   \node[boxwarn,text width=4.2cm,right=of p2] (p3) {\textbf{3. Préférences}\\\scriptsize affiner selon ce qui plaît\\[-2pt]\scriptsize visuellement (critique appris)\\[-2pt]\scriptsize \emph{bonus de fin de projet}};
   \draw[fwd] (p1) -- (p2);
   \draw[fwd] (p2) -- (p3);
 \end{tikzpicture}
 \end{center}
+
+Aucune phase n'a besoin de dessins de référence. Le modèle produit un dessin, la loss le note, le gradient corrige les poids : DeepGD entraîne déjà un GNN de cette façon, directement sur des critères esthétiques. La phase 1 sert à démarrer. Les coûts en pixels construits avec des SDF ont un gradient presque nul quand les éléments sont loin les uns des autres (la sigmoïde est plate loin du bord), donc un réseau qui place ses nœuds au hasard recevrait très peu de signal. Le stress, lui, donne un gradient partout et apprend d'abord une structure globale correcte.
 
 \textbf{Phase 3 en détail.} On annote des paires de dessins (\og je préfère A à B\fg{}), on entraîne un modèle critique (par exemple un CNN sur l'image) à prédire ces préférences, puis on affine le modèle de dessin pour maximiser ce score, en le gardant proche du modèle de la phase 2 (pénalité de divergence) pour qu'il ne \og triche\fg{} pas. On peut s'y prendre de trois façons :
 \begin{itemize}
@@ -129,7 +131,7 @@ Ce qui m'intéresse le plus : que l'architecture garantisse certaines contrainte
   \item par rétropropagation directe : si le critique et le rendu sont différentiables, on peut rétropropager son score jusqu'au modèle (approche de type DRaFT ; sur leur tâche de référence, les auteurs mesurent un gain de vitesse de plus de 200 fois par rapport au RL).
 \end{itemize}
 
-\subsection{Rendre le modèle conscient des arêtes}
+\subsection{Rendre le modèle conscient des arêtes}\label{sec:aretes}
 
 Les arêtes ne sont pas prédites : ce sont des segments droits entre les nœuds. Pourtant, la plupart des défauts propres à l'écran viennent d'elles (arête qui cache un nœud, traits qui fusionnent, croisements). Je voudrais que le modèle raisonne explicitement sur les arêtes pendant qu'il place les nœuds. Je vois deux façons de le faire :
 
@@ -179,7 +181,7 @@ La contrainte réelle est $\|c_i - c_j\| \ge r_i + r_j$. À traiter par un coût
 Sortir des coordonnées continues (ou des cartes de probabilité douces, Gumbel-softmax). Voir une affectation \og un nœud par case\fg{} comme un problème d'affectation différentiable (Sinkhorn). \\
 \addlinespace
 \textbf{Les arêtes ne sont pas prédites} : ce sont des segments droits entre nœuds ; occlusions et fusions de traits viennent d'elles. &
-Le modèle les contrôle indirectement, via les nœuds ; les coûts sur l'image (occlusion arête-nœud, densité) font remonter le gradient vers les extrémités. En plus : tête auxiliaire ou raffinement itératif (section 2.3). \\
+Le modèle les contrôle indirectement, via les nœuds ; les coûts sur l'image (occlusion arête-nœud, densité) font remonter le gradient vers les extrémités. En plus : tête auxiliaire ou raffinement itératif (section~\ref{sec:aretes}). \\
 \addlinespace
 \textbf{Mémoire et calcul} : de l'ordre de $(N+E)\times H\times W$ par graphe. &
 Petits graphes (base Rome), résolution modeste au début ; calcul des recouvrements via la carte somme $S=\sum_i I_i$ plutôt que paire par paire. \\
@@ -188,7 +190,7 @@ Petits graphes (base Rome), résolution modeste au début ; calcul des recouvrem
 Phase 3 traitée comme un bonus ; DPO ou critique préentraîné sur des métriques connues (lisibilité, cf.\ Haleem et al.) pour réduire le besoin d'annotations. \\
 \addlinespace
 \textbf{Évaluer un modèle appris est plus long} qu'une optimisation directe. &
-Une personne dédiée à l'évaluation et aux méthodes de référence dès le début. \\
+Une personne chargée de la loss et de l'évaluation dès le début, avec des métriques indépendantes de la loss (section~\ref{sec:eval}). \\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -216,14 +218,14 @@ Une personne dédiée à l'évaluation et aux méthodes de référence dès le d
   \ganttbar{État de l'art, questions à M.~Giot}{2026-10-10}{2026-10-23} \\
   \ganttbar{Environnement, base Rome}{2026-10-10}{2026-10-20} \\
   \ganttgroup{Phase 1 : briques de base}{2026-10-17}{2026-11-06} \\
-  \ganttbar{[A] GNN $\to$ positions, coût stress}{2026-10-17}{2026-11-06} \\
+  \ganttbar{[A] GNN $\to$ positions, préentr. stress}{2026-10-17}{2026-11-06} \\
   \ganttbar{[B] Rendu SDF nœuds + arêtes}{2026-10-17}{2026-11-06} \\
-  \ganttbar{[C] Méthodes de référence + métriques}{2026-10-17}{2026-11-06} \\
+  \ganttbar{[C] Métriques + méthodes de référence}{2026-10-17}{2026-11-06} \\
   \ganttmilestone{Jalon 1}{2026-11-06} \\
   \ganttgroup{Phase 2 : espace écran}{2026-11-07}{2026-12-18} \\
-  \ganttbar{[B] Coûts écran + optimisation directe}{2026-11-07}{2026-12-11} \\
+  \ganttbar{[B] Boucle d'entr. + optimisation directe}{2026-11-07}{2026-12-11} \\
   \ganttbar{[A] Entraînement avec coûts écran}{2026-11-14}{2026-12-18} \\
-  \ganttbar{[C] Comparaisons, impact environnemental}{2026-11-14}{2026-12-18} \\
+  \ganttbar{[C] Coûts écran, comparaisons}{2026-11-07}{2026-12-18} \\
   \ganttmilestone{Jalon 2}{2026-12-18} \\
   \ganttgroup{Phase 3 : préférences (bonus)}{2026-12-19}{2027-01-17} \\
   \ganttbar{Annotation + critique + affinage}{2026-12-19}{2027-01-17} \\
@@ -234,7 +236,7 @@ Une personne dédiée à l'évaluation et aux méthodes de référence dès le d
 \end{ganttchart}
 \end{center}
 
-\subsection{Répartition proposée (à discuter)}
+\subsection{Répartition des tâches}
 
 \begin{center}
 \small
@@ -242,9 +244,9 @@ Une personne dédiée à l'évaluation et aux méthodes de référence dès le d
 \toprule
 \textbf{Rôle} & \textbf{Responsabilité} \\
 \midrule
-A. Modèle & Architecture GNN (graphe $\to$ positions écran), entraînement supervisé puis avec coûts écran, phase 3. \\
-B. Rendu et coûts & Rendu différentiable (SDF ou autre méthode si plus adaptée), coûts écran, optimisation directe d'un graphe. \\
-C. Données et évaluation & Base Rome, méthodes de référence classiques, métriques, comparaisons, mesure d'impact environnemental. \\
+A. Pipeline : modèle (Melissa) & Architecture GNN (graphe $\to$ positions écran), préentraînement par le stress, entraînement avec les coûts écran, phase 3. \\
+B. Pipeline : rendu & Rendu différentiable (SDF ou autre méthode si plus adaptée), boucle d'entraînement, optimisation directe d'un graphe, base Rome. \\
+C. Loss et évaluation & Coûts écran, métriques, méthodes de référence classiques, comparaisons, mesure d'impact environnemental. \\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -255,7 +257,40 @@ C. Données et évaluation & Base Rome, méthodes de référence classiques, mé
   \item \texttt{render(positions, graphe, attributs) $\to$ image} $(C,H,W)$, différentiable ;
   \item chaque coût : \texttt{loss(image, ...) $\to$ scalaire}.
 \end{itemize}
-En attendant le rendu (B), le rôle A s'entraîne avec un coût géométrique simple (stress) pour valider son architecture.
+En attendant le rendu (B), le rôle A s'entraîne avec le stress seul, ce qui correspond de toute façon à la phase 1.
+
+\subsection{Règle d'évaluation}\label{sec:eval}
+
+La loss et l'évaluation sont confiées à la même personne parce qu'elles reposent sur les mêmes mesures. Une règle s'impose alors : un modèle évalué avec les termes qu'il minimise gagne forcément, puisqu'il a été entraîné pour ça (loi de Goodhart). L'évaluation inclut donc :
+\begin{itemize}
+  \item des métriques absentes de la loss d'entraînement (par exemple les croisements, si on ne les optimise pas, et des métriques de lisibilité de la littérature) ;
+  \item une comparaison aux méthodes de référence (SGD, FORBID\ldots) sur les mêmes graphes, mesurée sur le rendu final.
+\end{itemize}
+
+%=====================================================================
+\section{Questions pour M.~Giot}
+
+\textbf{Orientation}
+\begin{enumerate}
+  \item Nous voulons entraîner un modèle (GNN) qui prédit directement les positions en espace écran, sans supervision, avec des coûts calculés sur l'image rendue. Cette orientation vous convient-elle, ou préférez-vous que nous commencions par l'optimisation directe d'un graphe ?
+  \item Quelles entrées viser au départ : seulement la structure (nœuds, arêtes) et la taille des nœuds, ou aussi les épaisseurs, les couleurs et les formes ?
+  \item Quelle taille de graphes viser (nombre de nœuds), quelle résolution d'image, et quel temps de calcul vous paraîtrait acceptable ?
+\end{enumerate}
+
+\textbf{Évaluation}
+\begin{enumerate}[resume]
+  \item Quelles métriques et quel protocole recommandez-vous pour comparer un dessin optimisé en espace écran à un dessin géométrique ?
+  \item Quelles méthodes de référence comparer en priorité, et existe-t-il des implémentations que nous pouvons réutiliser ?
+\end{enumerate}
+
+\textbf{Organisation et rendus}
+\begin{enumerate}[resume]
+  \item Qu'attendez-vous aux jalons du 06/11 et du 18/12 ? Un état de l'art écrit est-il attendu, ou seulement une présentation orale ?
+  \item Quels livrables finaux attendez-vous : le code seul, un notebook de démonstration, un rapport ?
+  \item Le sujet mentionne des exemples de code : comment y accéder ?
+  \item Disposons-nous de GPU (LaBRI ou école), ou travaillons-nous sur nos machines ?
+  \item Le sujet mentionne GitLab : devons-nous l'utiliser, ou un dépôt GitHub privé auquel nous vous donnons accès vous convient-il ?
+\end{enumerate}
 
 %=====================================================================
 \section{Ressources pour creuser}
