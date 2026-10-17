@@ -5,9 +5,9 @@ from data.output import Layout
 
 
 def edge_crossings(layout: Layout, graph: GraphInput) -> torch.Tensor:
-    """Nombre de croisements d'arêtes. Non différentiable : pour l'évaluation.
+    """Number of edge crossings. Not differentiable: for evaluation only.
 
-    À penser : un graphe non planaire ne peut pas descendre à zéro croisement.
+    Keep in mind: a non-planar graph cannot get down to zero crossings.
     """
-    # TODO(rôle C)
+    # TODO(role C)
     raise NotImplementedError

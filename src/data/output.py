@@ -24,7 +24,7 @@ class Layout:
 def _edge_pairs(edge_index):
     """Returns a list of (i, j) pairs for each edge in edge_index."""
     if getattr(edge_index, "ndim", 0) != 2 or edge_index.shape[0] != 2:
-        raise ValueError(f"edge_index doit avoir la forme (2, E), got shape={tuple(edge_index.shape)}")
+        raise ValueError(f"edge_index must have shape (2, E), got shape={tuple(edge_index.shape)}")
     return edge_index.t().tolist()
 
 

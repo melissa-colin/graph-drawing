@@ -12,3 +12,13 @@ data/*
 .idea/
 .DS_Store
 .serena
+# Sorties des tests et cache pytest
+tests/out/
+.pytest_cache/
+
+# Poids des modèles entraînés (lourds, non versionnés)
+models/
+
+# Loss temporaire locale (en attendant loss.py du rôle C)
+src/tmp_loss.py
+runs/

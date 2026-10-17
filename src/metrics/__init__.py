@@ -1,6 +1,6 @@
-"""Métriques de qualité d'un dessin, utilisables par la loss, l'évaluation ou ailleurs.
+"""Quality metrics of a drawing, usable by the loss, the evaluation or elsewhere.
 
-Convention : une métrique est une fonction (layout, graph, ...) -> tenseur scalaire.
-Une métrique utilisée dans la loss doit être différentiable.
-Règle d'évaluation : eval.py utilise aussi des métriques absentes de la loss (loi de Goodhart).
+Convention: a metric is a function (layout, graph, ...) -> scalar tensor.
+A metric used in the loss must be differentiable.
+Evaluation rule: eval.py also uses metrics that are not in the loss (Goodhart's law).
 """

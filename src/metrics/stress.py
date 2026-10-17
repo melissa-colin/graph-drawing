@@ -5,9 +5,9 @@ from data.output import Layout
 
 
 def stress(layout: Layout, graph: GraphInput) -> torch.Tensor:
-    """Écart entre distances dessinées et distances dans le graphe (graph.dist). Différentiable.
+    """Gap between drawn distances and graph distances (graph.dist). Differentiable.
 
-    sum_{i<j} (||x_i - x_j|| - d_ij)^2 / d_ij^2, après remise du dessin à la meilleure échelle.
+    sum_{i<j} (||x_i - x_j|| - d_ij)^2 / d_ij^2, after rescaling the drawing to the best scale.
     """
-    # TODO(rôle C)
+    # TODO(role C)
     raise NotImplementedError

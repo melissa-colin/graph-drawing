@@ -10,14 +10,14 @@ import torch
 class GraphInput:
     name: str
     node_ids: list[str]
-    edge_index: torch.Tensor  # arêtes canonique du graphe, au sens (u, v), 1 occurrence par liaison
-    x: torch.Tensor           # attributs des nœuds pour le modèle
-    node_size: torch.Tensor   # rayon de chaque nœud, en pixels
-    dist: torch.Tensor  # (N, N) float : distances géodésiques ; dist[i, i] = 0, dist[i, j] = plus court chemin fini
-                       # pour des paires non reliées, la valeur est inf (comme dans floyd_warshall_numpy).
-                       # IMPORTANT : le stress ne doit utiliser que les paires avec 0 < dist < inf ;
-                       # la diagonale et les paires non reliées doivent être exclues avant division par d².
-    edge_width: float = 1.0  # largeur de trait pour le rendu visuel
+    edge_index: torch.Tensor  # canonical edges of the graph, (u, v) direction, one occurrence per link
+    x: torch.Tensor           # node features for the model
+    node_size: torch.Tensor   # radius of each node, in pixels
+    dist: torch.Tensor  # (N, N) float: geodesic distances; dist[i, i] = 0, dist[i, j] = finite shortest path
+                       # for unconnected pairs, the value is inf (as in floyd_warshall_numpy).
+                       # IMPORTANT: the stress must only use pairs with 0 < dist < inf;
+                       # the diagonal and unconnected pairs must be excluded before dividing by d².
+    edge_width: float = 1.0  # stroke width for visual rendering
 
     @property
     def num_nodes(self) -> int:
@@ -52,12 +52,31 @@ def load_graphml(path: Path, node_size: float = 4.0, edge_width: float = 1.0) ->
     )
 
 
-def split_dataset(data_dir: Path, test_ratio: float = 0.2, seed: int = 0) -> tuple[list[Path], list[Path]]:
+def split_dataset(data_dir: Path, val_ratio: float = 0.1, test_ratio: float = 0.2, seed: int = 0) -> tuple[list[Path], list[Path], list[Path]]:
+    """Split into disjoint train/val/test sets with a reproducible shuffle.
+
+    The ratios are applied on the whole dataset, with train = remaining files after
+    reserving validation and test sets. The three sets are disjoint and deterministic.
+    """
     files = sorted(data_dir.glob("*.graphml"))
     if not files:
-        return [], []
-    shuffled_files = files[:]
-    random.Random(seed).shuffle(shuffled_files)
-    n_test = int(round(len(shuffled_files) * test_ratio))
-    n_test = max(0, min(len(shuffled_files), n_test))
-    return shuffled_files[n_test:], shuffled_files[:n_test]
+        return [], [], []
+
+    shuffled = files[:]
+    random.Random(seed).shuffle(shuffled)
+
+    n_val = int(round(len(shuffled) * val_ratio))
+    n_test = int(round(len(shuffled) * test_ratio))
+    n_val = max(0, min(len(shuffled), n_val))
+    n_test = max(0, min(len(shuffled) - n_val, n_test))
+
+    val_start = 0
+    val_end = n_val
+    test_start = n_val
+    test_end = n_val + n_test
+    train_end = len(shuffled)
+
+    train_files = shuffled[test_end:train_end]
+    val_files = shuffled[val_start:val_end]
+    test_files = shuffled[test_start:test_end]
+    return train_files, val_files, test_files
