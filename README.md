@@ -1,7 +1,7 @@
 # Graph drawing différentiable en espace écran
 
 Projet semestriel ENSEIRB-MATMECA 3A (option IA) — 2026/2027.
-Équipe : Melissa Colin, Yani, Quentin. Encadrant : Romain Giot (LaBRI, équipe BKB).
+Équipe : Melissa Colin, Yani Haouchine, Quentin Lopez. Encadrant : Romain Giot (LaBRI, équipe BKB).
 
 ## Objectif
 
