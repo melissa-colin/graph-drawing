@@ -1,0 +1,609 @@
+\documentclass[a4paper,11pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{amsmath,amssymb}
+\usepackage{geometry}
+\usepackage{microtype}
+\usepackage{dsfont}
+\usepackage[hidelinks]{hyperref}
+
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{amsmath,amssymb}
+\usepackage{dsfont}
+
+\geometry{margin=2.5cm}
+
+\title{Métriques et modèles pour les graphes}
+\author{}
+\date{}
+
+\begin{document}
+
+%================================================
+% PAGE DE GARDE
+%================================================
+
+\begin{titlepage}
+    \centering
+    \vspace*{5cm} % Espace vertical depuis le haut de la page
+
+    {\Huge\bfseries Métriques et méthodes de\\[0.3cm] visualisation de graphes\par}
+    
+    \vspace{0.5cm}
+    \rule{0.5\textwidth}{1pt} % Barre horizontale (largeur = 50% de la largeur du texte, épaisseur = 1pt)
+
+    \vfill
+
+    {\large \today\par}
+\end{titlepage}
+
+%================================================
+% SOMMAIRE
+%================================================
+
+\tableofcontents
+\thispagestyle{empty}
+\newpage
+
+%================================================
+\section{Notations communes}
+%================================================
+
+Soit un graphe $G=(V,E)$, où $V$ est l'ensemble des
+sommets et $E$ l'ensemble des arêtes. Chaque sommet
+$u\in V$ est associé à une position
+$\mathbf{X}_u\in\mathbb{R}^2$.
+
+On utilise les notations suivantes :
+
+\begin{itemize}
+    \item $N(u)$ : ensemble des voisins de $u$ ;
+    \item $d_G(u,v)$ : distance théorique entre $u$ et $v$,
+    généralement définie par la longueur du plus court chemin ;
+    \item $\delta_{uv}=\|\mathbf{X}_u-\mathbf{X}_v\|_2$ :
+    distance euclidienne entre les positions de $u$ et $v$ ;
+    \item $\mathbf{e}_{uv}$ : vecteur unitaire orienté de
+    $u$ vers $v$ :
+    \[
+    \mathbf{e}_{uv}
+    =
+    \frac{\mathbf{X}_v-\mathbf{X}_u}{\delta_{uv}}.
+    \]
+\end{itemize}
+
+L'objectif est de déterminer les positions des sommets
+afin d'obtenir une représentation qui préserve autant
+que possible la structure du graphe.
+
+%================================================
+\section{Force-Directed : Fruchterman--Reingold}
+%================================================
+
+\subsection{Principe}
+
+L'algorithme de Fruchterman--Reingold modélise les sommets
+comme des particules soumises à des forces. Les sommets
+voisins s'attirent, tandis que tous les sommets distincts
+se repoussent.
+
+On note $k>0$ la distance idéale entre les sommets.
+
+\subsection{Force d'attraction}
+
+La force d'attraction agit uniquement entre les sommets
+reliés par une arête. Sa norme est donnée par :
+\[
+f_a(\delta_{uv})=\frac{\delta_{uv}^2}{k}.
+\]
+
+La force résultante sur un sommet $u$ est :
+\[
+\boxed{
+\mathbf{F}_a(u)
+=
+\sum_{v\in N(u)}
+\frac{\delta_{uv}^2}{k}\,\mathbf{e}_{uv}
+}
+\]
+
+\subsection{Force de répulsion}
+
+La répulsion agit entre toutes les paires de sommets
+distincts. Sa norme est donnée par :
+\[
+f_r(\delta_{uv})=\frac{k^2}{\delta_{uv}}.
+\]
+
+La force résultante sur $u$ est :
+\[
+\boxed{
+\mathbf{F}_r(u)
+=
+-\sum_{\substack{v\in V\\v\neq u}}
+\frac{k^2}{\delta_{uv}}\,\mathbf{e}_{uv}
+}
+\]
+
+Le signe négatif indique que la force est dirigée à
+l'opposé de $\mathbf{e}_{uv}$.
+
+\subsection{Force résultante}
+
+La force totale appliquée au sommet $u$ est :
+\[
+\boxed{
+\mathbf{F}(u)=\mathbf{F}_a(u)+\mathbf{F}_r(u)
+}
+\]
+
+À chaque itération, les positions sont ajustées selon
+les forces résultantes. Les déplacements peuvent être
+limités par une température qui diminue progressivement
+jusqu'à la stabilisation de la représentation.
+
+%================================================
+\section{Méthodes fondées sur le stress}
+%================================================
+
+Contrairement à l'approche précédente, les méthodes
+fondées sur le stress cherchent à construire une
+représentation en optimisant une fonction d'énergie.
+Deux formulations sont distinguées : le stress classique
+de Kamada--Kawai et une formulation générale obtenue
+à partir d'un modèle de forces.
+
+%------------------------------------------------
+\subsection{Stress de Kamada--Kawai}
+%------------------------------------------------
+
+\subsubsection{Principe}
+
+Kamada--Kawai représente le graphe par un système de
+ressorts fictifs. Chaque paire de sommets distincts est
+associée à un ressort dont la longueur naturelle dépend
+de la distance théorique $d_G(u,v)$.
+
+La méthode cherche à minimiser les écarts entre cette
+distance théorique et la distance euclidienne $\delta_{uv}$.
+
+\subsubsection{Fonction de stress}
+
+On définit le coefficient de pondération par :
+\[
+w_{uv}=\frac{1}{d_G(u,v)^\gamma},
+\]
+où $\gamma\geq 0$ contrôle l'importance relative des
+différentes paires de sommets.
+
+La fonction de stress s'écrit :
+\[
+\boxed{
+E_{\mathrm{KK}}(\mathbf{X})
+=
+\frac{1}{2}
+\sum_{\substack{u,v\in V\\u\neq v}}
+w_{uv}
+\left(\delta_{uv}-d_G(u,v)\right)^2
+}
+\]
+
+Le problème consiste à rechercher les positions qui
+minimisent cette fonction :
+\[
+\boxed{
+\mathbf{X}^{*}
+=
+\operatorname*{arg\,min}_{\mathbf{X}}
+E_{\mathrm{KK}}(\mathbf{X})
+}
+\]
+
+Le choix classique de Kamada--Kawai est $\gamma=2$,
+soit $w_{uv}=1/d_G(u,v)^2$.
+
+Le stress pénalise les écarts entre les distances
+géométriques et théoriques, en accordant davantage
+de poids aux paires dont le coefficient $w_{uv}$ est élevé.
+
+%------------------------------------------------
+\subsection{Stress dérivé d'un modèle de forces}
+%------------------------------------------------
+
+\subsubsection{Principe}
+
+Une autre approche consiste à définir des forces
+paramétriques, puis à construire une énergie potentielle
+par intégration. Elle permet de représenter différents
+types de forces dans un cadre unifié.
+
+\subsubsection{Formulation générale des forces}
+
+Pour un sommet $u$, la force de type $t$ est définie par :
+\[
+\boxed{
+\mathbf{F}_{u,t}
+=
+\sum_{(u,v)\in\Omega_t}
+\omega_t
+\frac{\delta_{uv}^{\alpha_t}}
+{d_G(u,v)^{\beta_t}}
+\,\mathbf{e}_{uv}
+}
+\]
+
+Les paramètres sont les suivants :
+\begin{itemize}
+    \item $t$ : type de force ;
+    \item $\Omega_t$ : ensemble des paires de sommets
+    concernées par cette force ;
+    \item $\omega_t$ : coefficient signé contrôlant
+    l'intensité et le sens de la force ;
+    \item $\alpha_t$ : exposant associé à la distance
+    euclidienne ;
+    \item $\beta_t$ : exposant associé à la distance
+    théorique dans le graphe.
+\end{itemize}
+
+Les paramètres et l'ensemble $\Omega_t$ dépendent du
+type de force considéré.
+
+\subsubsection{Énergie potentielle associée}
+
+En intégrant la contribution de chaque force par rapport
+à la distance euclidienne, on obtient l'énergie :
+\[
+\boxed{
+E_{u,t}
+=
+\begin{cases}
+\displaystyle
+\sum_{(u,v)\in\Omega_t}
+\frac{\omega_t}{d_G(u,v)^{\beta_t}}
+\ln(\delta_{uv}),
+& \alpha_t=-1,\\[12pt]
+\displaystyle
+\sum_{(u,v)\in\Omega_t}
+\frac{\omega_t}
+{(\alpha_t+1)d_G(u,v)^{\beta_t}}
+\delta_{uv}^{\alpha_t+1},
+& \alpha_t\neq -1.
+\end{cases}
+}
+\]
+
+Le cas $\alpha_t=-1$ conduit à une énergie logarithmique ;
+les autres valeurs conduisent à une énergie de type puissance.
+
+L'énergie totale s'obtient en sommant les contributions
+des sommets et des types de forces :
+\[
+\boxed{
+E_{\mathrm{tot}}(\mathbf{X})
+=
+\sum_{u\in V}\sum_t E_{u,t}
+}
+\]
+
+Dans une approche fondée sur l'énergie, les positions
+peuvent être optimisées en minimisant $E_{\mathrm{tot}}$.
+Dans une approche fondée directement sur les forces,
+elles sont mises à jour à partir de la résultante des forces.
+
+\subsection{Comparaison des modèles de stress}
+
+Kamada--Kawai minimise le stress en rapprochant les distances dessinées des distances théoriques du graphe. Le second modèle est plus flexible, car il permet d'adapter les forces grâce à différents paramètres.
+
+%================================================
+\section{Autres métriques}
+%================================================
+
+\subsection{Aspect Ratio}
+
+L'\textit{Aspect ratio} mesure à quel point un dessin de graphe est équilibré entre sa largeur et sa hauteur. Il est calculé en faisant tourner le dessin afin de trouver l'orientation qui donne le rapport entre la plus petite et la plus grande dimension le plus proche de 1.
+
+La métrique est définie par :
+\[
+AR = 1 - \min_{\theta}
+\frac{\min(w_\theta,h_\theta)}
+{\max(w_\theta,h_\theta)}.
+\]
+
+où :
+\begin{itemize}
+    \item $\theta$ est l'angle de rotation du dessin ;
+    \item $w_\theta$ et $h_\theta$ sont respectivement sa largeur et sa hauteur après rotation ;
+    \item le minimum est recherché parmi les angles testés.
+\end{itemize}
+
+La valeur obtenue est comprise entre 0 et 1. Une valeur proche de 0 indique un dessin équilibré, tandis qu'une valeur proche de 1 indique un dessin très allongé.
+
+Cette métrique est donc à minimiser : elle favorise les dessins dont la forme est compacte et proche d'un carré.
+
+L'\textit{Aspect ratio} mesure à quel point un dessin de graphe est équilibré entre sa largeur et sa hauteur. Il est calculé en faisant tourner le dessin afin de trouver l'orientation qui donne le rapport entre la plus petite et la plus grande dimension le plus proche de 1.
+
+\subsection{Angular Resolution}
+
+L'\textit{Angular resolution} mesure le plus petit angle entre deux arêtes qui se rejoignent en un même sommet. Lorsque plusieurs arêtes forment de petits angles, elles sont plus difficiles à distinguer visuellement.
+
+La métrique est définie par :
+\[
+AR_{\mathrm{ang}} =
+1-\frac{\min_{(i,j),(j,k)\in E}\theta_{ijk}}{\theta_G},
+\qquad
+\theta_G=\frac{2\pi}{d_{\max}},
+\]
+où :
+\begin{itemize}
+    \item $\theta_{ijk}$ est l'angle entre les arêtes $(i,j)$ et $(j,k)$ au sommet $j$ ;
+    \item $d_{\max}$ est le degré maximal du graphe, c'est-à-dire le plus grand nombre d'arêtes incidentes à un sommet ;
+    \item $\theta_G$ est l'angle idéal, obtenu en répartissant uniformément les arêtes autour d'un sommet de degré $d_{\max}$.
+\end{itemize}
+
+La métrique est à minimiser : une valeur faible indique que le plus petit angle observé est proche de l'angle idéal. Une valeur élevée signale des arêtes très rapprochées angulairement, donc plus difficiles à distinguer.
+
+\subsection{Edge Crossings}
+
+L'\textit{Edge Crossings} mesure le nombre de croisements entre les arêtes du graphe dans le dessin. Un croisement se produit lorsque deux arêtes se coupent en un point qui n'est pas un sommet commun.
+
+La métrique est définie par :
+\[
+C = \sum_{\substack{e_1,e_2\in E\\e_1\neq e_2}}
+\mathds{1}\{hasCrossing(e1, e2)\}
+\]
+où $\text{hasCrossing}(e_1,e_2)$ vaut $1$ si les deux arêtes se croisent, et $0$ sinon.
+
+La métrique est à minimiser : un score de $0$ signifie qu'aucun croisement n'est présent dans le dessin. Moins il y a de croisements, plus les relations entre les sommets sont faciles à suivre visuellement.
+
+\subsection{Cluster Overlap}
+
+Le \textit{Cluster Overlap} mesure si des sommets appartenant à des groupes différents sont proches les uns des autres dans le dessin. L'objectif est de vérifier si les groupes sont visuellement bien séparés.
+
+La métrique est définie par :
+\[
+CO = \sum_{i\in V}
+\frac{
+\displaystyle\sum_{u\in U_i}
+(1-\|X_u-X_i\|)
+\mathds{1}\{MCL_i\neq MCL_u\}
+}{
+\displaystyle\sum_{u\in U_i}
+(1-\|X_u-X_i\|)
+}.
+\]
+
+Les termes de la formule sont définis comme suit :
+\begin{itemize}
+    \item $V$ est l'ensemble des sommets du graphe.
+    \item $X_i$ et $X_u$ désignent les positions des sommets $i$ et $u$ dans le dessin.
+    \item $U_i$ est l'ensemble des sommets situés à une distance inférieure à $r=0.2$ du sommet $i$.
+    \item $MCL_i$ désigne le groupe auquel appartient le sommet $i$.
+    \item $\mathds{1}\{MCL_i\neq MCL_u\}$ vaut $1$ si $i$ et $u$ appartiennent à des groupes différents, et $0$ sinon.
+\end{itemize}
+
+Pour chaque sommet $i$, la fraction compare les sommets proches qui appartiennent à un groupe différent avec l'ensemble des sommets de son voisinage.
+
+\begin{itemize}
+    \item \textbf{Numérateur :} on additionne les contributions des sommets $u$ proches de $i$ qui appartiennent à un groupe différent. Chaque contribution est pondérée par $1-\|X_u-X_i\|$ : plus les deux sommets sont proches, plus leur contribution est importante.
+    \item \textbf{Dénominateur :} on additionne les poids de tous les sommets du voisinage $U_i$, qu'ils appartiennent au même groupe ou à des groupes différents. Il sert à normaliser le numérateur en fonction du voisinage considéré.
+\end{itemize}
+
+Le score est à minimiser : une valeur faible indique que les sommets proches appartiennent généralement au même groupe, ce qui traduit une meilleure séparation visuelle des groupes.
+
+\subsection{Neighborhood Preservation}
+
+La \textit{Neighborhood Preservation} mesure si les sommets proches dans le graphe théorique restent proches dans sa représentation visuelle. Elle évalue donc si le dessin préserve les voisinages du graphe d'origine.
+
+La métrique est définie par :
+\[
+NP = 1-\frac{1}{|V|}
+\sum_{i\in V}
+\frac{|U_i\cap Y_i|}{|U_i\cup Y_i|}.
+\]
+
+Les termes de la formule sont définis comme suit :
+\begin{itemize}
+    \item $V$ est l'ensemble des sommets du graphe.
+    \item $U_i$ est le voisinage du sommet $i$ dans le graphe théorique, défini à partir des distances dans le graphe (par exemple, les sommets accessibles en au plus $k$ arêtes).
+    \item $Y_i$ est l'ensemble des $|U_i|$ sommets les plus proches de $i$ dans le dessin, selon la distance euclidienne.
+    \item $U_i\cap Y_i$ contient les sommets présents dans les deux voisinages : ils sont proches à la fois dans le graphe théorique et dans le dessin.
+    \item $U_i\cup Y_i$ contient tous les sommets appartenant à au moins l'un des deux voisinages.
+    \item $|V|$ est le nombre total de sommets du graphe.
+\end{itemize}
+
+Le rapport
+\[
+\frac{|U_i\cap Y_i|}{|U_i\cup Y_i|}
+\]
+mesure la similarité entre les deux voisinages. Il vaut $1$ lorsqu'ils sont identiques et se rapproche de $0$ lorsqu'ils partagent peu de sommets.
+
+La somme calcule cette similarité pour chaque sommet, puis la division par $|V|$ en fait la moyenne. Enfin, la soustraction à $1$ inverse le score afin que la métrique soit à minimiser.
+
+Ainsi, une valeur proche de $0$ indique que les voisinages du graphe théorique sont bien préservés dans le dessin, tandis qu'une valeur élevée indique que des sommets proches dans le graphe se retrouvent éloignés visuellement.
+
+
+\section{Récapitulatif}
+
+\small
+\renewcommand{\arraystretch}{1.7}
+\begin{longtable}{|p{2.1cm}|p{2.8cm}|p{7.1cm}|p{3.1cm}|}
+\hline
+\textbf{Métrique ou modèle} &
+\textbf{Objectif} &
+\textbf{Formule} &
+\textbf{Différentiabilité} \\
+\hline
+\endfirsthead
+
+\hline
+\textbf{Métrique ou modèle} &
+\textbf{Objectif} &
+\textbf{Formule} &
+\textbf{Différentiabilité} \\
+\hline
+\endhead
+
+\textit{Fruchterman--Reingold}
+&
+Répartir les sommets en combinant l'attraction entre voisins et la répulsion entre tous les sommets.
+&
+$\displaystyle \mathbf{F}(u)=
+\sum_{v\in N(u)}\frac{\delta_{uv}^2}{k}\mathbf{e}_{uv}
+-\sum_{\substack{v\in V\\v\neq u}}
+\frac{k^2}{\delta_{uv}}\mathbf{e}_{uv}$
+&
+Pas de fonction objectif différentiable utilisée directement : les positions sont mises à jour à partir des forces. \\
+\hline
+
+\textit{Stress de Kamada--Kawai}
+&
+Rapprocher les distances du dessin des distances théoriques du graphe.
+&
+$\displaystyle E_{\mathrm{KK}}(\mathbf{X})=
+\frac{1}{2}\sum_{u\neq v}
+w_{uv}(\delta_{uv}-d_G(u,v))^2,
+\quad w_{uv}=\frac{1}{d_G(u,v)^2}$
+&
+Différentiable lorsque deux sommets ne coïncident pas. \\
+\hline
+
+\textit{Stress dérivé d'un modèle de forces}
+&
+Dépend des paramètres et des forces choisies.
+&
+$\displaystyle E_{\mathrm{tot}}(\mathbf{X})=
+\sum_{u\in V}\sum_t E_{u,t}$
+&
+Dépend des paramètres choisies. \\
+\hline
+
+\textit{Aspect Ratio}
+&
+Évaluer l'équilibre entre la largeur et la hauteur du dessin pour obtnenir un graphe se rapprochant d'un carré.
+&
+$\displaystyle AR=1-\max_{\theta} \frac{\min(w_\theta,h_\theta)}{\max(w_\theta,h_\theta)}$
+&
+Différentiable par morceaux. Peut être non différentiable lorsque l’orientation optimale change. \\
+\hline
+
+\textit{Angular Resolution}
+&
+Évaluer le plus petit angle entre deux arêtes incidentes à un même sommet dans le but d'éviter les angles trop petis.
+&
+$\displaystyle AR_{\mathrm{ang}}=1-\frac{\theta_{\min}}{\theta_G}, \quad \theta_G=\frac{2\pi}{d_{\max}}$
+&
+Différentiable par morceaux. Peut être non différentiable lorsque le plus petit angle change. \\
+\hline
+
+\textit{Edge Crossings}
+&
+Compter les croisements entre les arêtes pour les réduire et améliorer la lisibilité.
+&
+$\displaystyle C=\sum_{\substack{e_1,e_2\in E \\ e_1 < e_2}} \mathds{1}\{\mathrm{hasCrossing}(e_1,e_2)\}$
+&
+Non différentiable : le score change brusquement lorsqu’un croisement apparaît ou disparaît. \\
+\hline
+
+\textit{Cluster Overlap}
+&
+Évaluer le chevauchement entre les voisinages de sommets appartenant à des clusters différents afin de favoriser leur séparation visuelle.
+&
+$\displaystyle CO=\sum_{i\in V} \frac{\sum_{u\in U_i} (1-\delta_{iu}) \mathds{1}\{MCL_i\ne MCL_u\}}{\sum_{u\in U_i} (1-\delta_{iu})}$
+&
+Non différentiable lorsque les voisinages changent au seuil de distance. \\
+\hline
+
+\textit{Neighborhood Preservation}
+&
+Mesurer si les sommets proches dans le graphe théorique restent proches dans le dessin.
+&
+$\displaystyle NP=1-\frac{1}{|V|} \sum_{i\in V} \frac{|U_i\cap Y_i|}{|U_i\cup Y_i|}$
+&
+Non différentiable : les ensembles de plus proches voisins changent de façon discrète. \\
+\hline
+
+\end{longtable}
+\normalsize
+
+\paragraph{Remarque.}
+On note $\delta_{ij}=\|\mathbf X_i-\mathbf X_j\|_2$ la distance euclidienne dans le dessin et $d_G(i,j)$ la distance théorique dans le graphe. Les métriques sont à minimiser. Pour l'\textit{Aspect Ratio}, le maximum sur les angles permet de retenir l'orientation la plus équilibrée avant de soustraire le ratio à $1$.
+
+\section{Utilité pour le projet}
+
+\small
+\renewcommand{\arraystretch}{1.5}
+\begin{longtable}{|p{2.5cm}|p{2.3cm}|p{2.7cm}|p{6.5cm}|}
+\hline
+\textbf{Métrique} &
+\textbf{Priorité} &
+\textbf{Espace adapté} &
+\textbf{Utilité et adaptations possibles} \\
+\hline
+\endfirsthead
+
+\hline
+\textbf{Métrique} &
+\textbf{Priorité} &
+\textbf{Espace adapté} &
+\textbf{Utilité et adaptations possibles} \\
+\hline
+\endhead
+
+\textit{Stress} &
+Essentielle &
+Géométrique très probablement mais rastérisé possible &
+Préserver les distances théoriques du graphe dans le dessin. À conserver comme objectif principal de structuration, éventuellement complété par une formulation adaptée à l'espace rasterisé. \\
+\hline
+
+\textit{Aspect Ratio} &
+À adapter &
+Rasterisé &
+L'objectif n'est pas de rendre le dessin carré, mais d'utiliser au maximum l'espace disponible dans l'image. Contrairement à une approche géométrique, où le dessin peut être redimensionné après son placement, les positions doivent ici être adaptées directement au cadre de l'image. Un padding minimal doit être conservé sur les bords afin d'éviter que les représentations des nœuds soient coupées. La métrique devrait donc favoriser une occupation maximale de l'image tout en respectant cette marge de sécurité. \\
+\hline
+
+\textit{Edge Crossings} &
+Essentielle &
+Géométrique ou rasterisé &
+Réduire les croisements d'arêtes, qui nuisent à la lisibilité. Le calcul géométrique est direct, mais la métrique est difficile à optimiser directement. Une approximation différentiable dans l'espace rasterisé pourrait être étudiée. \\
+\hline
+
+\textit{Node Overlap} &
+Essentielle &
+Rasterisé &
+Pénaliser fortement le chevauchement entre deux sommets (prend en compte la forme d'un noeud). \\
+\hline
+
+\textit{Angular Resolution} &
+Secondaire &
+Géométrique &
+Éviter les angles trop petits entre les arêtes incidentes à un même sommet. Cette métrique améliore la lisibilité, mais peut être ajoutée dans un second temps. \\
+\hline
+
+\textit{Cluster Overlap} &
+Faible &
+Géométrique ou rasterisé &
+Favoriser la séparation visuelle des groupes. définition est plus complexe et certaines contraintes de distance sont déjà prises en compte par le stress. \\
+\hline
+
+\textit{Neighborhood Preservation} &
+Faible &
+Géométrique &
+Préserver les voisinages du graphe théorique dans le dessin. Recouvre partiellement l'objectif de conservation des distances porté par le stress. \\
+\hline
+
+\textit{Fruchterman--Reingold} &
+Non retenue comme métrique &
+Géométrique &
+Modèle de génération fondé sur les forces, et non d'une métrique d'évaluation. Son intégration dans une fonction de perte commune nécessite une adaptation. \\
+\hline
+
+\end{longtable}
+\normalsize
+
+\paragraph{Bilan.}
+Trois objectifs sont prioritaires : préserver les distances entre les sommets, contrôler l'encombrement global du dessin et réduire les chevauchements ou les croisements.
+
+%================================================
+\end{document}
