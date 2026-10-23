@@ -14,7 +14,7 @@ from loss import Loss, LossFn
 def train_step(model: LayoutModel, graph: GraphInput, loss_fn: LossFn, optimizer: torch.optim.Optimizer) -> float:
     optimizer.zero_grad()
     layout = model(graph)
-    loss = loss_fn(layout, graph)
+    loss, metrics_values = loss_fn(layout, graph)
     loss.backward()
     optimizer.step()
     return float(loss.item())
@@ -36,7 +36,8 @@ def train_step_batch(model: LayoutModel, batch: list[GraphInput], loss_fn: LossF
     optimizer.zero_grad()
     total_loss = 0.0
     for graph in batch:
-        total_loss = total_loss + loss_fn(model(graph), graph)
+        loss, metrics_values = loss_fn(model(graph), graph)
+        total_loss = total_loss + loss
     mean_loss = total_loss / len(batch)
     mean_loss.backward()
     optimizer.step()
@@ -52,7 +53,8 @@ def validation_loss(model: LayoutModel, graphs: list[GraphInput], loss_fn: LossF
     try:
         total = 0.0
         for graph in graphs:
-            total += float(loss_fn(model(graph), graph).item())
+            loss, metrics_values = loss_fn(model(graph), graph)
+            total += float(loss.item())
         return total / len(graphs)
     finally:
         model.train()
@@ -131,9 +133,9 @@ def main(
     out_path: Path,
     epochs: int,
     lr: float,
+    loss_fn: LossFn,
     width: int = 500,
     height: int = 500,
-    loss_fn: LossFn = Loss,
     batch_size: int = 1,
     patience: int | None = None,
 ) -> None:
@@ -182,5 +184,17 @@ def main(
 
 
 if __name__ == "__main__":
-    from tmp_loss import loss_v0
-    main(Path("data/rome"), Path("runs/model.pt"), epochs=10, lr=1e-3, loss_fn=loss_v0, batch_size=4, patience=3)
+    loss_fn = Loss(weights={
+        "screen": 0.2,
+        "stress": 1.0,
+    })
+
+    main(
+        Path("data/rome"),
+        Path("runs/model.pt"),
+        epochs=10,
+        lr=1e-3,
+        loss_fn=loss_fn,
+        batch_size=4,
+        patience=3,
+    )
