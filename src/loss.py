@@ -35,7 +35,7 @@ class Loss(nn.Module):
             "screen": screen,
             "stress": stress,
             "node_overlaps": node_overlaps,
-            "edge_overlaps": edge_overlaps,
+            "edge_overlaps": edge_overlaps, # TODO
             "edge_anlges": edge_angles, # TODO
         }
 
