@@ -5,7 +5,7 @@ Entrées : bruit aléatoire, degré, constante 1, 8 PE Laplaciennes.
 
 ## Résultats (novembre 2026)
 
-Tests courts : 3 000 graphes d'entraînement, 8 à 10 epochs, validation sur 500 graphes, loss `tmp_loss.loss_v0`.
+Tests courts : 3 000 graphes d'entraînement, 8 à 10 epochs, validation sur 500 graphes, loss temporaire `tmp_loss.loss_v0` (stress à l'échelle du cadre + chevauchement), supprimée depuis au profit de `src/loss.py`.
 Une même config relancée varie d'environ 0.03 : seuls les gros écarts comptent.
 
 | Config | Meilleure val (2 graines) |
@@ -24,6 +24,7 @@ Retiré du code : beacons (aussi testés en entraînement complet : val 0.244 co
 
 ## Reste à essayer
 
+- [ ] Refaire ces tests avec `src/loss.py` : son stress compare des pixels à des nombres d'arêtes (1 arête = 1 pixel), donc le dessin s'écrase (~10 px) ; il faudrait une échelle (pixels par arête). `node_overlaps` rend l'entraînement ~14 fois plus lent (boucle Python par paire).
 - [ ] Entraînement complet avec la config gardée (comparer à 0.186, modèle sans beacons).
 - [ ] Les dessins n'occupent pas tout le cadre : regarder ce que pénalise `frame_stress`.
 - [ ] Validation très bruitée d'une epoch à l'autre : scheduler ReduceLROnPlateau comme CoRe-GD.

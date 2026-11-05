@@ -4,10 +4,14 @@ from data.input import GraphInput
 from data.output import Layout
 
 
-def stress(layout: Layout, graph: GraphInput) -> torch.Tensor:
-    """Gap between drawn distances and graph distances (graph.dist_index, graph.dist_value). Differentiable.
+def stress(layout: Layout, graph: GraphInput, gamma: float = 2.0) -> torch.Tensor:
+    """Kamada-Kawai stress: sum over pairs of (||p_u - p_v|| - d_G(u,v))² / d_G(u,v)^gamma.
 
-    sum_{i<j} (||x_i - x_j|| - d_ij)^2 / d_ij^2, after rescaling the drawing to the best scale.
+    The pairs come from graph.dist_index (2, P) and graph.dist_value (P,): each pair i < j once,
+    only those with 0 < d_G < inf (see GraphInput).
     """
-    # TODO(role C)
-    raise NotImplementedError
+    pos = layout.positions
+    i, j = graph.dist_index.to(pos.device)
+    d = graph.dist_value.to(device=pos.device, dtype=pos.dtype)
+    e = (pos[i] - pos[j]).norm(dim=1)  # euclidean distance in the drawing
+    return ((e - d) ** 2 / d ** gamma).sum()

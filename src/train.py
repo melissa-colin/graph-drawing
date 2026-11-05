@@ -35,7 +35,7 @@ def batch_loss(model: LayoutModel, batch: Batch, loss_fn: LossFn, augment: bool 
     layout = model(batch, iterations)
     ptr = batch.ptr.tolist()
     losses = [
-        loss_fn(Layout(layout.positions[ptr[k] : ptr[k + 1]], layout.width, layout.height), graph)
+        loss_fn(Layout(layout.positions[ptr[k] : ptr[k + 1]], layout.width, layout.height), graph)[0]  # (total, metric values)
         for k, graph in enumerate(graphs)
     ]
     return torch.stack(losses).mean()
@@ -140,9 +140,9 @@ def main(
     out_path: Path,
     epochs: int,
     lr: float,
+    loss_fn: LossFn,
     width: int = 500,
     height: int = 500,
-    loss_fn: LossFn = Loss,
     batch_size: int = 1,
     patience: int | None = None,
 ) -> None:
@@ -187,5 +187,20 @@ def main(
 
 
 if __name__ == "__main__":
-    from tmp_loss import loss_v0
-    main(Path("data/rome"), Path("runs/model.pt"), epochs=30, lr=2e-4, loss_fn=loss_v0, batch_size=4, patience=5)
+    loss_fn = Loss(weights={
+        "screen": 1,
+        "stress": 0,
+        "node_overlaps": 0,
+        "edge_overlaps": 0,
+        "edge_anlges": 0, # TODO
+    })
+
+    main(
+        Path("data/rome"),
+        Path("runs/model.pt"),
+        epochs=30,
+        lr=2e-4,
+        loss_fn=loss_fn,
+        batch_size=4,
+        patience=5,
+    )
