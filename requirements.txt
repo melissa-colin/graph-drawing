@@ -8,3 +8,4 @@ torch==2.14.1
 pillow==11.3.0
 pytest==9.1.1
 tqdm==4.70.1
+torch_geometric==2.8.1

@@ -37,7 +37,7 @@ def save_png(layout: Layout, graph: GraphInput, path: Path) -> None:
         r = float(graph.node_size[i])
         draw.ellipse((x - r, y - r, x + r, y + r), fill="black")
 
-    line_width = max(1, int(round(graph.edge_width)))
+    line_width = max(1, int(round(float(graph.edge_width))))
     for i, j in _edge_pairs(graph.edge_index):
         x0, y0 = positions[i]
         x1, y1 = positions[j]
@@ -53,7 +53,7 @@ def save_positions(layout: Layout, graph: GraphInput, path: Path) -> None:
         "height": layout.height,
         "y_axis": "down",
         "node_radius": {node_id: float(size) for node_id, size in zip(graph.node_ids, graph.node_size)},
-        "edge_width": graph.edge_width,
+        "edge_width": float(graph.edge_width),  # a 1-element tensor once separated from a PyG batch
         "positions": {node_id: pos for node_id, pos in zip(graph.node_ids, positions)},
     }
     with open(path, "w", encoding="utf-8") as f:

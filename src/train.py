@@ -1,58 +1,72 @@
 import copy
+import os
 import random
 from pathlib import Path
 
+# Less GPU memory fragmentation (4 GB card); must be set before CUDA is initialized.
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
 import torch
+from torch_geometric.data import Batch
+from torch_geometric.loader import DataLoader
 from tqdm import tqdm
 
-from data.input import GraphInput, load_graphml, split_dataset
+from data.input import GraphInput, flip_pe_signs, load_dataset, redraw_noise, split_dataset
+from data.output import Layout
 from model import LayoutModel
 from loss import Loss, LossFn
 
 
 
-def train_step(model: LayoutModel, graph: GraphInput, loss_fn: LossFn, optimizer: torch.optim.Optimizer) -> float:
+def batch_loss(model: LayoutModel, batch: Batch, loss_fn: LossFn, augment: bool = False,
+               iterations: int | None = None) -> torch.Tensor:
+    """Mean loss over the graphs of a batch.
+
+    The model sees the whole batch at once (disjoint union of the graphs); the positions are then cut
+    back per graph with batch.ptr, because loss_fn takes one graph at a time.
+    augment: draw new noise and new positional-encoding signs for each graph (training only).
+    iterations: number of model iterations, the model's default if None.
+    The batch is moved to the model's device (the DataLoader yields CPU batches).
+    """
+    if augment:
+        batch = Batch.from_data_list([flip_pe_signs(redraw_noise(graph)) for graph in batch.to_data_list()])
+    batch = batch.to(next(model.parameters()).device)
+    graphs = batch.to_data_list()
+    layout = model(batch, iterations)
+    ptr = batch.ptr.tolist()
+    losses = [
+        loss_fn(Layout(layout.positions[ptr[k] : ptr[k + 1]], layout.width, layout.height), graph)
+        for k, graph in enumerate(graphs)
+    ]
+    return torch.stack(losses).mean()
+
+
+def train_step(model: LayoutModel, batch: Batch, loss_fn: LossFn, optimizer: torch.optim.Optimizer) -> float:
+    """One optimizer step. Two tricks from CoRe-GD, both kept after testing (docs/idees/melissa-archi.md):
+    - a random number of iterations around model.iterations, so the model works for any number of rounds;
+    - gradient clipping, so that one bad batch cannot make a huge update.
+    """
+    iterations = max(round(random.gauss(model.iterations, 1.0)), 1)
     optimizer.zero_grad()
-    layout = model(graph)
-    loss = loss_fn(layout, graph)
+    loss = batch_loss(model, batch, loss_fn, augment=True, iterations=iterations)
     loss.backward()
+    torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+    torch.nn.utils.clip_grad_value_(model.parameters(), 1.0)
     optimizer.step()
     return float(loss.item())
 
 
-def random_batches(graphs: list[GraphInput], batch_size: int, seed: int) -> list[list[GraphInput]]:
-    if batch_size <= 0:
-        raise ValueError(f"batch_size must be > 0, got {batch_size}.")
-
-    shuffled = graphs.copy()
-    random.Random(seed).shuffle(shuffled)
-    return [shuffled[i : i + batch_size] for i in range(0, len(shuffled), batch_size)]
-
-
-def train_step_batch(model: LayoutModel, batch: list[GraphInput], loss_fn: LossFn, optimizer: torch.optim.Optimizer) -> float:
-    if not batch:
-        return 0.0
-
-    optimizer.zero_grad()
-    total_loss = 0.0
-    for graph in batch:
-        total_loss = total_loss + loss_fn(model(graph), graph)
-    mean_loss = total_loss / len(batch)
-    mean_loss.backward()
-    optimizer.step()
-    return float(mean_loss.item())
-
-
 @torch.no_grad()
-def validation_loss(model: LayoutModel, graphs: list[GraphInput], loss_fn: LossFn) -> float:
+def validation_loss(model: LayoutModel, graphs: list[GraphInput], loss_fn: LossFn, batch_size: int = 32) -> float:
+    """Mean loss per graph. Positional encodings are seen as they are (no sign flip)."""
     if not graphs:
         return 0.0
 
     model.eval()
     try:
         total = 0.0
-        for graph in graphs:
-            total += float(loss_fn(model(graph), graph).item())
+        for batch in DataLoader(graphs, batch_size=batch_size, shuffle=False):
+            total += float(batch_loss(model, batch, loss_fn).item()) * batch.num_graphs
         return total / len(graphs)
     finally:
         model.train()
@@ -63,7 +77,7 @@ def train(
     graphs: list[GraphInput],
     loss_fn: LossFn,
     epochs: int,
-    lr: float = 1e-3,
+    lr: float = 2e-4,
     log_every: int = 0,
     batch_size: int = 1,
     val_graphs: list[GraphInput] | None = None,
@@ -71,8 +85,8 @@ def train(
 ) -> list[float]:
     """Train the model on a list of graphs for a number of epochs.
 
-    Default behavior is unchanged: if batch_size = 1 and no validation/early-stopping
-    options are provided, the code follows the original per-graph SGD loop.
+    The graphs are shuffled every epoch and grouped into batches of batch_size graphs (of mixed sizes);
+    one optimizer step per batch, on the mean loss of its graphs.
     """
     if patience is not None and val_graphs is None:
         raise ValueError("patience requires val_graphs to be provided.")
@@ -83,27 +97,22 @@ def train(
     best_val_loss: float | None = None
     epochs_without_improvement = 0
 
-    for epoch in range(1, epochs + 1):
-        if batch_size <= 1:
-            batches = [[graph] for graph in graphs]
-        else:
-            batches = random_batches(graphs, batch_size=batch_size, seed=epoch)
+    if batch_size <= 0:
+        raise ValueError(f"batch_size must be > 0, got {batch_size}.")
+    loader = DataLoader(graphs, batch_size=batch_size, shuffle=True)
 
+    for epoch in range(1, epochs + 1):
         epoch_loss = 0.0
         total_weight = 0
-        for batch in tqdm(batches, desc=f"Epoch {epoch}/{epochs}", leave=False, unit="graph"):
-            if len(batch) == 1:
-                batch_loss = train_step(model, batch[0], loss_fn, optimizer)
-            else:
-                batch_loss = train_step_batch(model, batch, loss_fn, optimizer)
-            epoch_loss += batch_loss * len(batch)
-            total_weight += len(batch)
+        for batch in tqdm(loader, desc=f"Epoch {epoch}/{epochs}", leave=False, unit="batch"):
+            epoch_loss += train_step(model, batch, loss_fn, optimizer) * batch.num_graphs
+            total_weight += batch.num_graphs
 
         epoch_loss /= total_weight if total_weight > 0 else 1
         history.append(epoch_loss)
 
         if val_graphs is not None:
-            val_loss = validation_loss(model, val_graphs, loss_fn)
+            val_loss = validation_loss(model, val_graphs, loss_fn, batch_size)
             if best_val_loss is None or val_loss < best_val_loss:
                 best_state = copy.deepcopy(model.state_dict())
                 best_val_loss = val_loss
@@ -138,15 +147,18 @@ def main(
     patience: int | None = None,
 ) -> None:
     train_files, val_files, test_files = split_dataset(data_dir)
-    train_graphs = [load_graphml(path) for path in train_files]
-    val_graphs = [load_graphml(path) for path in val_files]
-    test_graphs = [load_graphml(path) for path in test_files]
+    graphs = load_dataset(data_dir)
+    train_graphs = [graphs[path.stem] for path in train_files]
+    val_graphs = [graphs[path.stem] for path in val_files]
+    test_graphs = [graphs[path.stem] for path in test_files]
 
     if not train_graphs:
         raise ValueError(f"No training graphs found in {data_dir}")
 
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Device: {device}")
     in_features = train_graphs[0].x.shape[1]
-    model = LayoutModel(in_features, hidden=64, width=width, height=height, margin=4.0)
+    model = LayoutModel(in_features, hidden=64, width=width, height=height, margin=4.0).to(device)
     train(
         model,
         train_graphs,
@@ -160,22 +172,15 @@ def main(
     )
 
     if val_graphs:
-        val_loss = validation_loss(model, val_graphs, loss_fn)
+        val_loss = validation_loss(model, val_graphs, loss_fn, batch_size)
         print(f"Validation loss: {val_loss:.4f}")
     if test_graphs:
-        test_loss = validation_loss(model, test_graphs, loss_fn)
+        test_loss = validation_loss(model, test_graphs, loss_fn, batch_size)
         print(f"Test loss: {test_loss:.4f}")
 
     checkpoint = {
-        "state_dict": model.state_dict(),
-        "config": {
-            "in_features": model.encoder.net[0].in_features,
-            "hidden": model.encoder.net[0].out_features,
-            "width": model.width,
-            "height": model.height,
-            "margin": model.head.margin,
-            "temperature": model.head.temperature,
-        },
+        "state_dict": {name: tensor.cpu() for name, tensor in model.state_dict().items()},
+        "config": model.config,
     }
     out_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(checkpoint, out_path)
@@ -183,4 +188,4 @@ def main(
 
 if __name__ == "__main__":
     from tmp_loss import loss_v0
-    main(Path("data/rome"), Path("runs/model.pt"), epochs=10, lr=1e-3, loss_fn=loss_v0, batch_size=4, patience=3)
+    main(Path("data/rome"), Path("runs/model.pt"), epochs=30, lr=2e-4, loss_fn=loss_v0, batch_size=4, patience=5)
