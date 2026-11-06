@@ -1,5 +1,6 @@
 import copy
 import random
+import re
 import zlib
 
 import networkx as nx
@@ -194,31 +195,20 @@ def load_dataset(data_dir, node_size=4.0, edge_width=1.0, pe_dim=8):
     return dict(zip(names, graphs))
 
 
-def split_dataset(data_dir, val_ratio=0.1, test_ratio=0.2, seed=0):
-    """Split into disjoint train/val/test sets with a reproducible shuffle.
+def split_dataset(data_dir):
+    """Train/val/test split of the Rome graphs, identical to the one of CoRe-GD and DeepGD.
 
-    The ratios are applied on the whole dataset, with train = remaining files after
-    reserving validation and test sets. The three sets are disjoint and deterministic.
+    Same baseline as their published models: their test graphs are never in our training set.
+    Their procedure (neuraldrawer/datasets/datasets.py, get_dataset("rome")): the graphs listed in
+    Graph.log, sorted by grafo number, connected ones only, shuffled with random.seed(12345);
+    train = [:10000], test = [10000:11000], val = [11000:] (531 graphs).
+    Reads every .graphml once to test connectivity (about a minute).
     """
-    files = sorted(data_dir.glob("*.graphml"))
-    if not files:
-        return [], [], []
+    names = re.findall(r"name: (grafo\d+\.\d+)", (data_dir / "Graph.log").read_text())
+    names = sorted(names, key=lambda name: int(re.search(r"grafo(\d+)", name).group(1)))
+    paths = [data_dir / f"{name}.graphml" for name in names]
+    connected = [path for path in paths if nx.is_connected(nx.read_graphml(path))]
 
-    shuffled = files[:]
-    random.Random(seed).shuffle(shuffled)
-
-    n_val = int(round(len(shuffled) * val_ratio))
-    n_test = int(round(len(shuffled) * test_ratio))
-    n_val = max(0, min(len(shuffled), n_val))
-    n_test = max(0, min(len(shuffled) - n_val, n_test))
-
-    val_start = 0
-    val_end = n_val
-    test_start = n_val
-    test_end = n_val + n_test
-    train_end = len(shuffled)
-
-    train_files = shuffled[test_end:train_end]
-    val_files = shuffled[val_start:val_end]
-    test_files = shuffled[test_start:test_end]
-    return train_files, val_files, test_files
+    random.seed(12345)  # global seed, as in their code: random.shuffle must draw the same permutation
+    random.shuffle(connected)
+    return connected[:10000], connected[11000:12000], connected[10000:11000]
