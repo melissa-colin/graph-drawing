@@ -384,35 +384,31 @@ Découpage fixe : 70\,\% entraînement, 10\,\% validation, 20\,\% test.
 \end{frame}
 
 %---------------------------------------------------------------------
-\begin{frame}{Premiers résultats : entre l'aléatoire et Kamada-Kawai}
+\begin{frame}{Premiers résultats : comparaison avec l'état de l'art}
 \begin{columns}[c]
-\begin{column}{0.44\textwidth}
+\begin{column}{0.40\textwidth}
 \centering
-\includegraphics[height=0.74\textheight]{resultats.png}
+\includegraphics[height=0.7\textheight]{resultats.png}
 \end{column}
-\begin{column}{0.54\textwidth}
+\begin{column}{0.58\textwidth}
 \footnotesize
-\begin{tabular}{@{}lcc@{}}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lccc@{}}
 \toprule
- & \textbf{Stress} & \textbf{Nœuds qui se} \\
- & \textbf{normalisé} & \textbf{chevauchent} \\
+ & \textbf{Stress} & \textbf{Croisements} & \textbf{Nœuds} \\
+ & \textbf{normalisé} $\downarrow$ & \textbf{d'arêtes} $\downarrow$ & \textbf{superposés} $\downarrow$ \\
 \midrule
-Aléatoire & 0,42 & 0,09\,\% \\
-\textbf{Notre modèle} & \textbf{0,14} & \textbf{0,30\,\%} \\
-Kamada-Kawai & 0,06 & 0\,\% \\
+Aléatoire & 0,420 & 615 & 0,07\,\% \\
+Notre modèle & 0,140 & 77 & 0,33\,\% \\
+\midrule
+Kamada-Kawai & 0,062 & 30 & \textbf{0\,\%} \\
+DeepGD & 0,060 & 30 & 0,02\,\% \\
+CoRe-GD & \textbf{0,059} & \textbf{29} & \textbf{0\,\%} \\
 \bottomrule
 \end{tabular}
 
 \vspace{2pt}
-{\scriptsize\textcolor{gris}{Moyennes sur 300 graphes de test (stress : plus bas = mieux).}}
-
-\vspace{0.2cm}
-\begin{itemize}
-\setlength{\itemsep}{2pt}
-\item La structure est bien meilleure qu'au hasard, mais pas encore au niveau de Kamada-Kawai.
-\item Au-delà de 50 nœuds, le modèle forme des amas, d'où plus de chevauchements qu'au hasard.
-\item Ce modèle a été entraîné avec une loss provisoire, avant la loss commune.
-\end{itemize}
+{\scriptsize\textcolor{gris}{204 graphes de Rome jamais vus à l'entraînement.}}
 \end{column}
 \end{columns}
 \end{frame}
