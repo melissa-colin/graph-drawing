@@ -1,7 +1,6 @@
 import copy
 import random
 import zlib
-from pathlib import Path
 
 import networkx as nx
 import numpy
@@ -10,6 +9,35 @@ from torch_geometric.data import Data
 from torch_geometric.utils import to_undirected
 from tqdm import tqdm
 
+# -----------------------------------------------------------------------------------------------------------
+# ------------------------------- PRIVATE TOOLS -------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------------------
+def _pack_distances(graph):
+    """Cache format: dist_index is dropped (16 bytes per pair, most of the file) and dist_value becomes the
+    whole upper triangle i < j, in torch.triu_indices order, with inf for the pairs that were left out."""
+    n = graph.num_nodes
+    triangle = torch.full((n * (n - 1) // 2,), float("inf"))
+    i, j = graph.dist_index
+    triangle[i * n - i * (i + 1) // 2 + (j - i - 1)] = graph.dist_value  # position of (i, j) in triu order
+    packed = copy.copy(graph)
+    del packed.dist_index
+    packed.dist_value = triangle
+    return packed
+
+
+def _unpack_distances(graph):
+    """Inverse of _pack_distances: rebuild dist_index and keep only the finite pairs (0 is impossible for i < j)."""
+    pairs = torch.triu_indices(graph.num_nodes, graph.num_nodes, offset=1)
+    useful = torch.isfinite(graph.dist_value)
+    graph.dist_index = pairs[:, useful]
+    graph.dist_value = graph.dist_value[useful]
+    return graph
+
+
+
+# -----------------------------------------------------------------------------------------------------------
+# ------------------------------- CLASS DEFINITION ----------------------------------------------------------
+# -----------------------------------------------------------------------------------------------------------
 
 class GraphInput(Data):
     """A graph ready for the model, batchable by torch_geometric.loader.DataLoader.
@@ -22,34 +50,35 @@ class GraphInput(Data):
                  edge_width=1.0, pe_dim=0, **kwargs):
         """dist: (N, N) float, graph distances, inf if no path exists. Only the useful pairs are kept."""
         super().__init__(x=x, edge_index=edge_index, **kwargs)
-        # x: (N, F) float : node features (random noise, degree, constant 1, then positional encodings)
-        # edge_index: (2, E) long : canonical edges, (u, v) direction, one occurrence per link
-        if name is not None:
-            self.name = name  # str : graph name (from the file stem)
-        if node_ids is not None:
-            self.node_ids = node_ids  # list[str] : node identifiers, in the order of the rows of x
-        if node_size is not None:
-            self.node_size = node_size  # (N,) float : radius of each node in pixels
+        self.name = name
+        self.node_ids = node_ids
+        self.node_size = node_size
         if dist is not None:
             useful = torch.ones_like(dist, dtype=torch.bool).triu(diagonal=1) & torch.isfinite(dist) & (dist > 0)
-            self.dist_index = useful.nonzero().t()  # (2, P) long : pairs i < j with 0 < d < inf
-            self.dist_value = dist[self.dist_index[0], self.dist_index[1]]  # (P,) float : their graph distance
-        self.edge_width = float(edge_width)  # float : stroke width in pixels
-        self.pe_dim = int(pe_dim)  # int : number of positional-encoding columns at the end of x (0 if none)
+            self.dist_index = useful.nonzero().t()
+            self.dist_value = dist[self.dist_index[0], self.dist_index[1]]
+        self.edge_width = float(edge_width) 
+        self.pe_dim = int(pe_dim)
 
     def __inc__(self, key, value, *args, **kwargs):
-        # dist_index holds node indices: shift it by the number of nodes when batching, like edge_index.
+        # est appelé par PyG pendant le batching : colle les graphes en ajoutant num_nodes à dist_index pour que les indices restent corrects
         if key == "dist_index":
             return self.num_nodes
         return super().__inc__(key, value, *args, **kwargs)
 
     @property
-    def edge_index_bidirectional(self) -> torch.Tensor:
+    def edge_index_bidirectional(self):
         """Edges in both directions: (u, v) and (v, u), for directed message-passing usage."""
         return to_undirected(self.edge_index, num_nodes=self.num_nodes)
 
 
-def laplacian_pe(graph: nx.Graph, node_ids: list[str], k: int) -> torch.Tensor:
+
+# -----------------------------------------------------------------------------------------------------------
+# ----------------------------------- PUBLIC TOOLS ----------------------------------------------------------
+# -----------------------------------------------------------------------------------------------------------
+
+
+def laplacian_pe(graph, node_ids, k):
     """Laplacian positional encodings: the k smoothest NON-constant eigenvectors of the normalized
     Laplacian, one row per node in node_ids order. Returns a (N, k) float tensor.
 
@@ -64,7 +93,7 @@ def laplacian_pe(graph: nx.Graph, node_ids: list[str], k: int) -> torch.Tensor:
     return torch.from_numpy(pe).float()
 
 
-def redraw_noise(graph: GraphInput, generator: torch.Generator | None = None) -> GraphInput:
+def redraw_noise(graph, generator=None):
     """Training-time augmentation, as in CoRe-GD: new uniform noise in the first column of x at every batch.
 
     The noise lets the model tell apart nodes that the other features cannot (symmetric nodes); since it
@@ -77,7 +106,7 @@ def redraw_noise(graph: GraphInput, generator: torch.Generator | None = None) ->
     return redrawn
 
 
-def flip_pe_signs(graph: GraphInput, generator: torch.Generator | None = None) -> GraphInput:
+def flip_pe_signs(graph, generator=None):
     """Training-time augmentation: multiplies each positional-encoding column of x by a random +1 or -1.
 
     An eigenvector v and -v are equally valid, so the model must not depend on the sign it receives.
@@ -93,7 +122,30 @@ def flip_pe_signs(graph: GraphInput, generator: torch.Generator | None = None) -
     return flipped
 
 
-def load_graphml(path: Path, node_size: float = 4.0, edge_width: float = 1.0, pe_dim: int = 8) -> GraphInput:
+def load_graphml(path, node_size=4.0, edge_width=1.0, pe_dim=8):
+    """
+    Charge un graphe au format GraphML et le convertit en un objet GraphInput une seule fois et le sauvegarde en cache.
+
+    On numérote les noeds de 0 à N-1 et les arêtes dans un tableau de 2 lignes (haut = source, bas = target).
+    Le x contient 3 colonnes : 
+    - du bruit uniforme (pour différencier les noeuds symétriques)
+    - le degré du noeud (nombre de voisins)
+    - une constante 1 (pour que le modèle puisse apprendre un biais)
+    Auquel on ajoute 8 encodage de position (les 8 vecteurs propres les plus lisses du Laplacien normalisé).
+
+    On calcule aussi la distance entre chaque paire de noeuds (inf si pas de chemin) le nombre d'arêtes du plus court chemin entre chaque paire de nœuds. La loss s'en sert pour comparer avec les distances dessinées.
+
+    L'objet GraphInput hérite de Data (l'objet graphe de PyG) et contient les informations suivantes :
+    - name : le nom du graphe (le nom du fichier sans l'extension)
+    - node_ids : la liste des identifiants des noeuds (dans l'ordre des lignes de x)
+    - edge_index : les arêtes du graphe (2, E)
+    - x : les features des noeuds (N, F)
+    - node_size : le rayon de chaque noeud en pixels (N,)
+    - dist_index : les paires de noeuds i < j avec 0 < d < inf (2, P)
+    - dist_value : la distance entre les paires de noeuds (P,)
+    - edge_width : l'épaisseur des arêtes en pixels
+    - pe_dim : le nombre de colonnes d'encodage de position à la fin de x (0 si aucun)
+    """
     graph = nx.read_graphml(path)
     node_ids = [str(node) for node in graph.nodes()]
     node_index = {node_id: i for i, node_id in enumerate(node_ids)}
@@ -121,29 +173,7 @@ def load_graphml(path: Path, node_size: float = 4.0, edge_width: float = 1.0, pe
     )
 
 
-def _pack_distances(graph: GraphInput) -> GraphInput:
-    """Cache format: dist_index is dropped (16 bytes per pair, most of the file) and dist_value becomes the
-    whole upper triangle i < j, in torch.triu_indices order, with inf for the pairs that were left out."""
-    n = graph.num_nodes
-    triangle = torch.full((n * (n - 1) // 2,), float("inf"))
-    i, j = graph.dist_index
-    triangle[i * n - i * (i + 1) // 2 + (j - i - 1)] = graph.dist_value  # position of (i, j) in triu order
-    packed = copy.copy(graph)
-    del packed.dist_index
-    packed.dist_value = triangle
-    return packed
-
-
-def _unpack_distances(graph: GraphInput) -> GraphInput:
-    """Inverse of _pack_distances: rebuild dist_index and keep only the finite pairs (0 is impossible for i < j)."""
-    pairs = torch.triu_indices(graph.num_nodes, graph.num_nodes, offset=1)
-    useful = torch.isfinite(graph.dist_value)
-    graph.dist_index = pairs[:, useful]
-    graph.dist_value = graph.dist_value[useful]
-    return graph
-
-
-def load_dataset(data_dir: Path, node_size: float = 4.0, edge_width: float = 1.0, pe_dim: int = 8) -> dict[str, GraphInput]:
+def load_dataset(data_dir, node_size=4.0, edge_width=1.0, pe_dim=8):
     """Load every .graphml of data_dir, keyed by file stem, through a cache file in data_dir.
 
     The first call parses all the files (slow: shortest paths and eigenvectors for each graph) and saves
@@ -164,7 +194,7 @@ def load_dataset(data_dir: Path, node_size: float = 4.0, edge_width: float = 1.0
     return dict(zip(names, graphs))
 
 
-def split_dataset(data_dir: Path, val_ratio: float = 0.1, test_ratio: float = 0.2, seed: int = 0) -> tuple[list[Path], list[Path], list[Path]]:
+def split_dataset(data_dir, val_ratio=0.1, test_ratio=0.2, seed=0):
     """Split into disjoint train/val/test sets with a reproducible shuffle.
 
     The ratios are applied on the whole dataset, with train = remaining files after

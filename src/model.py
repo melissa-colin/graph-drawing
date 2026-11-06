@@ -158,7 +158,7 @@ class LayoutModel(nn.Module):
         batch = graph.batch if getattr(graph, "batch", None) is not None \
             else torch.zeros(graph.num_nodes, dtype=torch.long, device=x.device)
 
-        x = self.encoder(x)
+        x = self.encoder(x) # MLP qui transforme les 11 features de chaque noeud en un vecteur de dimension 64 (cahque noeud separement)
         for _ in range(iterations - 1):
             for conv in self.convs:
                 x = conv(x, edge_index)
