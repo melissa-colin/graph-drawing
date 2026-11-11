@@ -5,14 +5,14 @@ from data.output import Layout
 
 
 def stress(layout: Layout, graph: GraphInput, gamma: float = 2.0) -> torch.Tensor:
-    """Normalized Kamada-Kawai stress loss.
+    """Inspiration Kamada-Kawai stress: sum over pairs of (||p_u - p_v|| - d_G(u,v))² / d_G(u,v)^gamma.
 
-        Computes the weighted sum of squared differences between normalized 
-        drawing distances and theoretical graph distances.
+    The pairs come from graph.dist_index (2, P) and graph.dist_value (P,): each pair i < j once,
+    only those with 0 < d_G < inf (see GraphInput).
     """
     pos = layout.positions
     i, j = graph.dist_index.to(pos.device)
     d = graph.dist_value.to(device=pos.device, dtype=pos.dtype)
-    L = min(layout.width, layout.height) / d.max()   # pixels par saut
+    L = min(layout.width, layout.height) / d.max()
     e = (pos[i] - pos[j]).norm(dim=1)
     return (((e / L) - d) ** 2 / d ** gamma).sum()
