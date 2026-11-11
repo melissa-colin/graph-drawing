@@ -1,11 +1,14 @@
 import torch
+import math
+
+EPSILON = 1e-12
 
 def node_sdf_torch(px, py, c, r):
     """Signed distance to a disk. Negative inside."""
     dx = px - c[0]
     dy = py - c[1]
     # distance - radius + espilon (for retropagation)
-    return torch.sqrt(dx.square() + dy.square() + 1e-12) - r
+    return torch.sqrt(dx.square() + dy.square() + EPSILON) - r
 
 
 def edge_sdf_torch(px, py, a, b, w):
@@ -13,7 +16,7 @@ def edge_sdf_torch(px, py, a, b, w):
     # Direction and length of the edge
     dx = b[0] - a[0]
     dy = b[1] - a[1]
-    length_ab = torch.sqrt(dx.square() + dy.square() + 1e-12)
+    length_ab = torch.sqrt(dx.square() + dy.square() + EPSILON)
 
     # unit vector along the edge
     nx = dx / length_ab
@@ -29,9 +32,23 @@ def edge_sdf_torch(px, py, a, b, w):
     across_edge = (-(px - mx) * ny + (py - my) * nx).abs() - w / 2  # direction of the width
 
     # distance outside the rectangle (to the nearest edge or corner).
-    outside = torch.sqrt(torch.clamp(along_edge, min=0).square() + torch.clamp(across_edge, min=0).square() + 1e-12)
+    outside = torch.sqrt(torch.clamp(along_edge, min=0).square() + torch.clamp(across_edge, min=0).square() + EPSILON)
 
     # signed distance inside the rectangle: negative distance to the nearest edge.
     inside = torch.minimum(torch.maximum(along_edge, across_edge), along_edge.new_zeros(()))
 
     return outside + inside
+
+
+def node_coverage_torch(px, py, c, r, softness=0.5):
+    """Coverage in [0, 1] of a disk at the pixel centers (px, py)."""
+    return torch.sigmoid(-node_sdf_torch(px, py, c, r) / softness)
+
+
+def edge_coverage_torch(px, py, a, b, w, softness=0.5):
+    """Coverage in [0, 1] of an edge at the pixel centers (px, py)."""
+    return torch.sigmoid(-edge_sdf_torch(px, py, a, b, w) / softness)
+
+
+def coverage_margin(softness=0.5, threshold=0.01):
+    return softness * math.log((1 - threshold) / threshold)

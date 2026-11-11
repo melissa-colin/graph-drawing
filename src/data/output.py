@@ -20,7 +20,7 @@ from data.input import GraphInput
 
 @dataclass
 class Layout:
-    positions: torch.Tensor # (N, 2) float : position of each node in the image, in pixels
+    positions: torch.Tensor # (N, 2) float in [margin, W - margin] x [margin, H - margin] : position of each node in the image, in pixels
     width: int
     height: int
 
