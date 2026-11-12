@@ -189,7 +189,6 @@ def main(
 if __name__ == "__main__":
     loss_fn = Loss(weights={
         "screen_fill": 1,
-        "screen_inside": 1,
         "stress": 0,
         "node_overlaps": 0,
         "edge_overlaps": 0,

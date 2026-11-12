@@ -9,7 +9,6 @@ from data.input import GraphInput
 from data.output import Layout
 
 from metrics.screen_fill import screen_fill
-from metrics.screen_inside import screen_inside
 from metrics.stress import stress
 from metrics.node_overlaps import node_overlaps
 from metrics.edge_overlaps import edge_overlaps
@@ -34,11 +33,10 @@ class Loss(nn.Module):
 
         metrics = {
             "screen_fill": screen_fill,
-            "screen_inside": screen_inside,
             "stress": stress,
             "node_overlaps": node_overlaps,
-            "edge_overlaps": edge_overlaps, # TODO
-            "edge_anlges": edge_angles, # TODO
+            "edge_overlaps": edge_overlaps,
+            "edge_anlges": edge_angles,
         }
 
         for name, metric_fn in metrics.items():

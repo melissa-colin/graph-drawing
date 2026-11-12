@@ -30,7 +30,7 @@ def test_model():
     model = LayoutModel(graph.x.shape[1], hidden=64, width=800, height=600)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     loss_fn = Loss(weights={
-        "screen_fill": 1, "screen_inside": 1, "stress": 1,
+        "screen_fill": 1, "stress": 1,
         "node_overlaps": 1, "edge_overlaps": 1, "edge_anlges": 1,
     })
 
@@ -59,7 +59,7 @@ def test_free_positions():
     pos = init.positions.detach().clone().requires_grad_(True)
     opt = torch.optim.Adam([pos], lr=1.0)  # ~1 pixel par pas
     loss_fn = Loss(weights={
-        "screen_fill": 0, "screen_inside": 0, "stress": 0,
+        "screen_fill": 0, "stress": 0,
         "node_overlaps": 0, "edge_overlaps": 1, "edge_anlges": 0,
     })
 
