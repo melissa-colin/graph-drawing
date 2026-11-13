@@ -10,8 +10,10 @@ from data.output import Layout
 
 from metrics.screen_fill import screen_fill
 from metrics.stress import stress
-from metrics.node_overlaps import node_overlaps
-from metrics.edge_overlaps import edge_overlaps
+#from metrics.node_overlaps import node_overlaps
+#from metrics.edge_overlaps import edge_overlaps
+
+from metrics.overlaps_vectorised import node_overlaps, edge_overlaps
 from metrics.edge_angles import edge_angles
 
 LossFn = Callable[[Layout, GraphInput], tuple[torch.Tensor, dict[str, float]]]
