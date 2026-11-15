@@ -9,7 +9,7 @@ from PIL import Image, ImageDraw, ImageFont
 HERE = Path(__file__).resolve().parent
 RENDERS = HERE / "out" / "renders"
 OUT = HERE / "out" / "sheet.png"
-METHODS = ["Aléatoire", "Notre modèle", "Kamada-Kawai", "DeepGD", "CoRe-GD"]
+METHODS = ["Aléatoire", "Notre modèle", "Notre modèle + affinage", "Kamada-Kawai", "DeepGD", "CoRe-GD"]
 SIZE, GAP, TOP, LEFT = 500, 14, 70, 190
 
 

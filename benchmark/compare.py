@@ -1,4 +1,4 @@
-"""Benchmark: random / our model / Kamada-Kawai / DeepGD / CoRe-GD on the 1000 test graphs of Rome.
+"""Benchmark: random / our model (alone, then + refinement) / Kamada-Kawai / DeepGD / CoRe-GD on the 1000 test graphs of Rome.
 
 Our split (src/data/input.split_dataset) is the one of CoRe-GD and DeepGD: no learned model saw these graphs.
 DeepGD and CoRe-GD use the pretrained Rome checkpoints shipped with the CoRe-GD repo.
@@ -79,11 +79,16 @@ ours = load_model(Path(CHECKPOINT)).to(dev)
 cfg = ours.config
 print("our checkpoint:", CHECKPOINT, "| head:", cfg["head"],
       "| loss weights:", torch.load(CHECKPOINT, map_location="cpu").get("loss_weights", "not recorded"))
-def ours_pos(g):
+from loss import Loss
+from refine import ROUNDS, STEPS, draw
+from train import PHASE_2_WEIGHTS
+refine_loss = Loss(weights=PHASE_2_WEIGHTS)
+def ours_pos(g, steps=0):
+    """Our model with ROUNDS rounds, then `steps` refinement steps on the positions (src/refine.py)."""
     h = g.clone()
     if h.x.shape[1] == cfg["in_features"] + 1:  # checkpoints from before the noise column
         h.x = h.x[:, 1:]
-    with torch.no_grad(): return ours(h.to(dev)).positions.cpu()
+    return draw(ours, h.to(dev), refine_loss, ROUNDS, steps).positions.cpu()
 def random_pos(g, rng):
     return torch.tensor([[rng.uniform(M, W - M), rng.uniform(M, H - M)] for _ in range(g.num_nodes)])
 def kk_pos(g):
@@ -139,9 +144,11 @@ DATA = HERE.parent / "data" / "rome"
 gs = load_dataset(DATA)
 graphs = [gs[path.stem] for path in split_dataset(DATA)[2]]  # test split, shared with CoRe-GD and DeepGD
 rng = random.Random(0)
-methods = [("Aléatoire", lambda g: random_pos(g, rng)), ("Notre modèle", ours_pos), ("Kamada-Kawai", kk_pos),
+methods = [("Aléatoire", lambda g: random_pos(g, rng)), ("Notre modèle", ours_pos),
+           ("Notre modèle + affinage", lambda g: ours_pos(g, STEPS)), ("Kamada-Kawai", kk_pos),
            ("DeepGD", deepgd_pos), ("CoRe-GD", core_pos)]
 params = {"Aléatoire": 0, "Kamada-Kawai": 0, "Notre modèle": sum(p.numel() for p in ours.parameters()),
+          "Notre modèle + affinage": sum(p.numel() for p in ours.parameters()),
           "DeepGD": sum(p.numel() for p in dgd.parameters()), "CoRe-GD": sum(p.numel() for p in core.parameters())}
 for k, f in methods[1:]:  # warm-up: first CUDA calls are slow
     f(graphs[0])
