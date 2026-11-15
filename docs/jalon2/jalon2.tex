@@ -148,7 +148,7 @@ Même découpage que CoRe-GD et DeepGD : 10\,000 entraînement, 1\,000 test, 531
 \begin{itemize}
 \setlength{\itemsep}{2pt}
 \item des coûts calculés à l'écran : en cours, c'est notre loss ;
-\item l'optimisation directe, graphe par graphe : pas encore commencée ;
+\item l'optimisation directe, graphe par graphe : utilisée pour affiner le dessin du modèle ;
 \item un modèle appris sur la base Rome : notre point de départ, sans dessins de référence puisque la loss note le dessin produit.
 \end{itemize}
 \end{minipage}
@@ -490,6 +490,46 @@ Stress seul & \textbf{0,0629} & 30,7 & 0,028\,\% & 7,7 & 0,608 \\
 
 \vspace{0.1cm}
 \scriptsize\textcolor{gris}{Les 1\,000 graphes de test, mesurés une seule fois. Les deux lignes partent du même modèle et ont le même nombre d'epochs d'affinage.}
+\end{frame}
+
+%---------------------------------------------------------------------
+\begin{frame}{Supprimer le compromis : affiner chaque dessin}
+\centering
+\begin{tikzpicture}[node distance=0.45cm]
+  \node[carte] (g) {\textbf{Graphe}};
+  \node[carte,right=of g,fill=bleuclair,draw=bleu] (m) {\textbf{Modèle}\\\scriptsize 12 tours au lieu de 5};
+  \node[carte,right=of m] (d) {\textbf{Dessin}\\\scriptsize déjà bon};
+  \node[carte,right=of d,fill=orangeclair,draw=orange] (r) {\textbf{25 pas d'Adam}\\\scriptsize sur les positions,\\[-2pt]\scriptsize même loss};
+  \node[carte,right=of r] (f) {\textbf{Dessin final}};
+  \draw[fleche] (g) -- (m); \draw[fleche] (m) -- (d); \draw[fleche] (d) -- (r); \draw[fleche] (r) -- (f);
+\end{tikzpicture}
+
+\vspace{0.3cm}
+\footnotesize
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{@{}lcccccc@{}}
+\toprule
+ & \textbf{Stress} & \textbf{Croise-} & \textbf{Nœuds} & \textbf{Arête sur} & \textbf{Angle} & \textbf{Temps} \\
+ & $\downarrow$ & \textbf{ments} $\downarrow$ & \textbf{superposés} $\downarrow$ & \textbf{nœud} $\downarrow$ & \textbf{min.} $\uparrow$ & \textbf{/ graphe} \\
+\midrule
+Modèle « stress seul » & 0,0621 & 30,9 & 0,026\,\% & 7,8 & 0,610 & 2 ms \\
+Modèle final, 5 tours & 0,0646 & 29,4 & 0,012\,\% & 6,7 & 0,618 & 2 ms \\
+Modèle final, 12 tours & 0,0632 & 28,3 & 0,002\,\% & 5,3 & 0,625 & 4 ms \\
+\textbf{12 tours + affinage} & \textbf{0,0615} & \textbf{27,9} & \textbf{0\,\%} & \textbf{0,05} & \textbf{0,647} & 41 ms \\
+\bottomrule
+\end{tabular}
+
+\vspace{0.15cm}
+\begin{minipage}{0.94\textwidth}
+\footnotesize
+\begin{itemize}
+\setlength{\itemsep}{1pt}
+\item \textbf{Meilleur sur les cinq critères à la fois} : plus de compromis entre le stress et le reste.
+\item Le deuxième axe du sujet (optimisation directe), \textbf{parti du dessin du modèle} : quelques pas suffisent.
+\end{itemize}
+\end{minipage}
+
+\scriptsize\textcolor{gris}{Validation (531 graphes), réglages choisis parmi 15 variantes. RTX 3060, batchs de 64 graphes.}
 \end{frame}
 
 %---------------------------------------------------------------------
