@@ -5,7 +5,10 @@ import torch
 
 from data.input import GraphInput, load_graphml
 from data.output import Layout, save_png, save_positions
+from loss import Loss
 from model import LayoutModel
+from refine import ROUNDS, STEPS, draw
+from train import PHASE_2_WEIGHTS
 
 
 def load_model(model_path: Path) -> LayoutModel:
@@ -24,11 +27,12 @@ def load_model(model_path: Path) -> LayoutModel:
     return model
 
 
-def infer(model_path: Path, graphml_path: Path) -> tuple[Layout, GraphInput]:
+def infer(model_path: Path, graphml_path: Path, rounds: int = ROUNDS, steps: int = STEPS) -> tuple[Layout, GraphInput]:
+    """Draw a graph: the model with `rounds` rounds, then `steps` refinement steps on the positions with the
+    phase-2 training loss (see refine.py; steps = 0 for the model alone)."""
     graph = load_graphml(graphml_path, node_size=4.0)
     model = load_model(model_path)
-    with torch.no_grad():
-        return model(graph), graph
+    return draw(model, graph, Loss(weights=PHASE_2_WEIGHTS), rounds, steps), graph
 
 
 if __name__ == "__main__":
@@ -36,8 +40,10 @@ if __name__ == "__main__":
     parser.add_argument("model_path", type=Path)
     parser.add_argument("graphml_path", type=Path)
     parser.add_argument("out_png", type=Path)
+    parser.add_argument("--rounds", type=int, default=ROUNDS, help="model rounds")
+    parser.add_argument("--steps", type=int, default=STEPS, help="refinement steps on the positions (0: model only)")
     args = parser.parse_args()
 
-    layout, graph = infer(args.model_path, args.graphml_path)
+    layout, graph = infer(args.model_path, args.graphml_path, args.rounds, args.steps)
     save_png(layout, graph, args.out_png)
     save_positions(layout, graph, args.out_png.with_suffix(".json"))
