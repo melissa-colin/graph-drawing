@@ -15,7 +15,10 @@ def load_model(model_path: Path) -> LayoutModel:
     if "config" not in checkpoint or "state_dict" not in checkpoint:
         raise ValueError(f"Invalid checkpoint for {model_path}: expected 'config' and 'state_dict'.")
 
-    model = LayoutModel(**checkpoint["config"])
+    config = dict(checkpoint["config"])
+    config.pop("conv", None)  # very old checkpoints: option removed since
+    config.setdefault("head", "full")  # checkpoints saved before the separable head used the full one
+    model = LayoutModel(**config)
     model.load_state_dict(checkpoint["state_dict"])
     model.eval()
     return model

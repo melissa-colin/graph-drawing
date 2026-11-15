@@ -113,6 +113,45 @@ class SoftArgmaxHead(nn.Module):
         return positions, probs
 
 
+class SeparableSoftArgmaxHead(nn.Module):
+    """Embeddings (N, D) -> one probability vector over the columns and one over the rows -> positions (N, 2).
+
+    Optimisation de la tête soft-argmax : même sortie possible, 250 fois moins de paramètres et de mémoire.
+    La position d'un nœud est l'espérance de sa carte de probabilités. Or E[x] ne dépend que de la loi
+    marginale des colonnes, et E[y] que de celle des lignes : la carte 2D complète (W x H scores) ne sert
+    qu'à fabriquer ces deux marginales. Ici, on prédit directement les deux marginales (W + H scores).
+    Toute paire de marginales est atteignable par la tête complète et inversement (prendre la carte
+    produit), donc l'ensemble des positions possibles est exactement le même.
+    Pour 500 x 500 : 64 x 1 000 poids au lieu de 64 x 250 000, et 1 000 scores par nœud au lieu de 250 000.
+    """
+
+    def __init__(self, dim: int, width: int, height: int, margin: float,
+                 grid_w: int | None = None, grid_h: int | None = None, temperature: float = 1.0):
+        """Same arguments as SoftArgmaxHead."""
+        super().__init__()
+        self.grid_w = grid_w or width
+        self.grid_h = grid_h or height
+        self.temperature = temperature
+        self.margin = margin
+        self.scores_x = nn.Linear(dim, self.grid_w)
+        self.scores_y = nn.Linear(dim, self.grid_h)
+        centers_x = torch.linspace(margin, width - margin, steps=self.grid_w, dtype=torch.float32)
+        centers_y = torch.linspace(margin, height - margin, steps=self.grid_h, dtype=torch.float32)
+        self.register_buffer("centers_x", centers_x)
+        self.register_buffer("centers_y", centers_y)
+
+    def forward(self, h: torch.Tensor) -> tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
+        """h: (N, D) -> positions (N, 2) in pixels, (column probabilities (N, grid_w), row probabilities (N, grid_h))"""
+        col_probs = (self.scores_x(h) / self.temperature).softmax(dim=-1)
+        row_probs = (self.scores_y(h) / self.temperature).softmax(dim=-1)
+        x = (col_probs * self.centers_x).sum(dim=-1)
+        y = (row_probs * self.centers_y).sum(dim=-1)
+        return torch.stack((x, y), dim=-1), (col_probs, row_probs)
+
+
+HEADS = {"separable": SeparableSoftArgmaxHead, "full": SoftArgmaxHead}
+
+
 class LayoutModel(nn.Module):
     """Graph -> position of each node in a width x height image (CoRe-GD-style recurrent GNN).
 
@@ -123,13 +162,15 @@ class LayoutModel(nn.Module):
     def __init__(self, in_features: int, hidden: int, width: int, height: int,
                  margin: float = 4.0, temperature: float = 1.0, iterations: int = 5, knn_k: int = 8,
                  convs_per_iteration: int = 2, mlp_depth: int = 2,
-                 hidden_factor: int = 4, dropout: float = 0.0):
+                 hidden_factor: int = 4, dropout: float = 0.0, head: str = "separable"):
+        """head: "separable" (one score per column and per row, default) or "full" (one score per pixel,
+        the original head; checkpoints saved before this option use it, see infer.load_model)."""
         super().__init__()
         # Constructor arguments, saved in checkpoints to rebuild the model (infer.load_model).
         self.config = dict(in_features=in_features, hidden=hidden, width=width, height=height,
                            margin=margin, temperature=temperature, iterations=iterations, knn_k=knn_k,
                            convs_per_iteration=convs_per_iteration, mlp_depth=mlp_depth,
-                           hidden_factor=hidden_factor, dropout=dropout)
+                           hidden_factor=hidden_factor, dropout=dropout, head=head)
         self.width = width
         self.height = height
         self.iterations = iterations
@@ -142,7 +183,7 @@ class LayoutModel(nn.Module):
         # Same conv weights reused at every iteration (recurrence); conv_alt runs on the kNN edges.
         self.convs = nn.ModuleList([copy.deepcopy(main_conv) for _ in range(convs_per_iteration)])
         self.conv_alt = copy.deepcopy(main_conv)
-        self.head = SoftArgmaxHead(hidden, width, height, margin, temperature=temperature)
+        self.head = HEADS[head](hidden, width, height, margin, temperature=temperature)
 
     def forward(self, graph: GraphInput, iterations: int | None = None) -> Layout:
         """Continuous positions computed by soft-argmax over the output grid.
