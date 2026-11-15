@@ -27,7 +27,10 @@ def refine(layout: Layout, graph, loss_fn: Loss, steps: int = STEPS, lr: float =
     with torch.enable_grad():
         for _ in range(steps):
             optimizer.zero_grad()
-            loss_fn(Layout(positions, layout.width, layout.height), graph)[0].backward()
+            loss = loss_fn(Layout(positions, layout.width, layout.height), graph)[0]
+            if not loss.requires_grad:  # every weight is 0: nothing to optimize
+                break
+            loss.backward()
             optimizer.step()
             with torch.no_grad():
                 positions[:, 0].clamp_(margin, layout.width - margin)
@@ -36,7 +39,19 @@ def refine(layout: Layout, graph, loss_fn: Loss, steps: int = STEPS, lr: float =
 
 
 def draw(model, graph, loss_fn: Loss, rounds: int = ROUNDS, steps: int = STEPS) -> Layout:
-    """Full drawing: the model with `rounds` rounds, then `steps` refinement steps (0: model only)."""
+    """Full drawing: the model with `rounds` rounds, then `steps` refinement steps (0: model only).
+
+    One graph alone is refined on the CPU: its tensors are tiny, and on a GPU each of the hundreds of small
+    operations of a step costs more to launch than to compute (measured on an RTX 3060: 213 ms per graph on
+    the CPU, 516 ms on the GPU). A batch of graphs stays on its device, where the GPU is efficient (17 ms per
+    graph for batches of 64)."""
     with torch.no_grad():
         layout = model(graph, rounds)
-    return refine(layout, graph, loss_fn, steps) if steps > 0 else layout
+    if steps <= 0:
+        return layout
+    if getattr(graph, "batch", None) is None and layout.positions.is_cuda:
+        device = layout.positions.device
+        cpu = Layout(layout.positions.cpu(), layout.width, layout.height)
+        refined = refine(cpu, graph.cpu(), loss_fn, steps)
+        return Layout(refined.positions.to(device), layout.width, layout.height)
+    return refine(layout, graph, loss_fn, steps)
