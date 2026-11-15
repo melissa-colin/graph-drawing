@@ -160,14 +160,21 @@ def model_descent(graphs, active, steps, lr, batch_size):
     last = {name: {} for name in active}     # last value seen for each metric and graph
     initial = {name: {} for name in active}
 
-    def loss_fn(layout, graph):
-        values = {name: METRICS[name](layout, graph) for name in active}
-        for name, value in values.items():
-            last[name][graph.name] = value.item()
-        if not initial[active[0]]:            # first pass: only record the initial values
-            return sum(values.values()), {}
-        total = sum(value / max(initial[name][graph.name], EPS) for name, value in values.items())
-        return total, {}
+    def loss_fn(layout, batch):
+        # train.batch_loss gives the whole batch: the metrics are computed graph by graph here, because
+        # each graph has its own initial value to divide by (slower than the training loss, fine for a tool)
+        ptr = batch.ptr.tolist()
+        totals = []
+        for k, graph in enumerate(batch.to_data_list()):
+            part = Layout(layout.positions[ptr[k]:ptr[k + 1]], layout.width, layout.height)
+            values = {name: METRICS[name](part, graph) for name in active}
+            for name, value in values.items():
+                last[name][graph.name] = value.item()
+            if not initial[active[0]]:        # first pass: only record the initial values
+                totals.append(sum(values.values()))
+            else:
+                totals.append(sum(value / max(initial[name][graph.name], EPS) for name, value in values.items()))
+        return torch.stack(totals).mean(), {}
 
     model.eval()
     with torch.no_grad():

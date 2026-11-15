@@ -12,7 +12,6 @@ from torch_geometric.loader import DataLoader
 from tqdm import tqdm
 
 from data.input import GraphInput, flip_pe_signs, load_dataset, redraw_noise, split_dataset
-from data.output import Layout
 from model import LayoutModel
 from loss import Loss, LossFn
 
@@ -22,23 +21,19 @@ def batch_loss(model: LayoutModel, batch: Batch, loss_fn: LossFn, augment: bool 
                iterations: int | None = None) -> torch.Tensor:
     """Mean loss over the graphs of a batch.
 
-    The model sees the whole batch at once (disjoint union of the graphs); the positions are then cut
-    back per graph with batch.ptr, because loss_fn takes one graph at a time.
-    augment: draw new noise and new positional-encoding signs for each graph (training only).
+    The model sees the whole batch at once (disjoint union of the graphs), and so does the loss: every
+    metric handles a PyG batch and returns the mean over its graphs (see metrics/batching.py). Same value
+    as the former loop over the graphs, without one series of GPU calls per graph.
+    augment: draw new noise and new positional-encoding signs for each graph (training only), on the
+    whole batch at once, without splitting it into graphs.
     iterations: number of model iterations, the model's default if None.
     The batch is moved to the model's device (the DataLoader yields CPU batches).
     """
-    if augment:
-        batch = Batch.from_data_list([flip_pe_signs(redraw_noise(graph)) for graph in batch.to_data_list()])
     batch = batch.to(next(model.parameters()).device)
-    graphs = batch.to_data_list()
+    if augment:
+        batch = flip_pe_signs(redraw_noise(batch))
     layout = model(batch, iterations)
-    ptr = batch.ptr.tolist()
-    losses = [
-        loss_fn(Layout(layout.positions[ptr[k] : ptr[k + 1]], layout.width, layout.height), graph)[0]  # (total, metric values)
-        for k, graph in enumerate(graphs)
-    ]
-    return torch.stack(losses).mean()
+    return loss_fn(layout, batch)[0]
 
 
 def train_step(model: LayoutModel, batch: Batch, loss_fn: LossFn, optimizer: torch.optim.Optimizer) -> float:

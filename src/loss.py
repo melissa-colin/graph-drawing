@@ -16,7 +16,7 @@ from metrics.stress import stress
 from metrics.overlaps_vectorised import node_overlaps, edge_overlaps
 from metrics.edge_angles import edge_angles
 
-LossFn = Callable[[Layout, GraphInput], tuple[torch.Tensor, dict[str, float]]]
+LossFn = Callable[[Layout, GraphInput], tuple[torch.Tensor, dict[str, torch.Tensor]]]
 
 
 class Loss(nn.Module):
@@ -27,7 +27,7 @@ class Loss(nn.Module):
 
     def forward(
         self, layout: Layout, graph: GraphInput
-    ) -> tuple[torch.Tensor, dict[str, float]]:
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
         """Return total loss and individual active metric values."""
 
         total = layout.positions.new_zeros(())
@@ -50,6 +50,9 @@ class Loss(nn.Module):
 
             value = metric_fn(layout, graph)
             total = total + weight * value
-            metrics_values[name] = value.detach().item()
+            # Tenseur détaché, pas .item() : .item() attend le GPU (une synchronisation par métrique et
+            # par graphe, à chaque pas d'entraînement) alors que l'entraînement n'utilise pas ces valeurs.
+            # float(v) pour les afficher.
+            metrics_values[name] = value.detach()
 
         return total, metrics_values

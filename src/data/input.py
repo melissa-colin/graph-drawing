@@ -100,10 +100,11 @@ def redraw_noise(graph, generator=None):
     The noise lets the model tell apart nodes that the other features cannot (symmetric nodes); since it
     changes every batch, the model cannot rely on any particular value.
     Returns a NEW GraphInput (the original graph is left untouched); only column 0 changes.
+    Works on a single graph or on a whole PyG batch.
     """
     redrawn = copy.copy(graph)  # shallow: the other tensors are shared, not duplicated
     redrawn.x = graph.x.clone()
-    redrawn.x[:, 0] = torch.rand(graph.num_nodes, generator=generator)
+    redrawn.x[:, 0] = torch.rand(graph.num_nodes, generator=generator).to(graph.x.device)
     return redrawn
 
 
@@ -112,14 +113,19 @@ def flip_pe_signs(graph, generator=None):
 
     An eigenvector v and -v are equally valid, so the model must not depend on the sign it receives.
     Returns a NEW GraphInput (the original graph is left untouched); only the last pe_dim columns change.
+    Works on a single graph or on a whole PyG batch: in a batch, each graph draws its own signs.
     """
-    pe_dim = int(graph.pe_dim)  # a 1-element tensor once separated from a PyG batch
+    pe_dim = graph.pe_dim  # an int for one graph, a (B,) tensor in a PyG batch (same value for all graphs)
+    pe_dim = int(pe_dim.flatten()[0]) if torch.is_tensor(pe_dim) else int(pe_dim)
     if pe_dim == 0:
         return graph
-    signs = torch.randint(0, 2, (pe_dim,), generator=generator).float() * 2 - 1
+    batch = getattr(graph, "batch", None)
+    num_graphs = 1 if batch is None else int(graph.num_graphs)
+    signs = torch.randint(0, 2, (num_graphs, pe_dim), generator=generator).float() * 2 - 1
+    signs = signs.to(graph.x.device)
     flipped = copy.copy(graph)  # shallow: the other tensors are shared, not duplicated
     flipped.x = graph.x.clone()
-    flipped.x[:, -pe_dim:] *= signs
+    flipped.x[:, -pe_dim:] *= signs[0] if batch is None else signs[batch.to(graph.x.device)]
     return flipped
 
 
