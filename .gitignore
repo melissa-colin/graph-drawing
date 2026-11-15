@@ -18,6 +18,9 @@ tests/out/
 
 # Poids des modèles entraînés (lourds, non versionnés)
 models/
+archive-model/
+*.pt
+*.zip
 
 runs/
 
