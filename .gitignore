@@ -33,3 +33,6 @@ runs/
 *.out
 *.synctex.gz
 *.toc
+# Benchmark: third-party baselines (benchmark/setup_baselines.sh) and outputs
+benchmark/ext/
+benchmark/out/
