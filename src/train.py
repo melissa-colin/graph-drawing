@@ -140,7 +140,10 @@ def main(
     height: int = 500,
     batch_size: int = 1,
     patience: int | None = None,
+    init_path: Path | None = None,
 ) -> None:
+    """Train a model and save it to out_path, with the loss weights.
+    init_path: start from this trained checkpoint instead of a new model (phase 2, fine-tuning)."""
     train_files, val_files, test_files = split_dataset(data_dir)
     graphs = load_dataset(data_dir)
     train_graphs = [graphs[path.stem] for path in train_files]
@@ -153,7 +156,12 @@ def main(
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
     in_features = train_graphs[0].x.shape[1]
-    model = LayoutModel(in_features, hidden=64, width=width, height=height, margin=4.0).to(device)
+    if init_path is None:
+        model = LayoutModel(in_features, hidden=64, width=width, height=height, margin=4.0).to(device)
+    else:
+        from infer import load_model  # here: infer is only needed for fine-tuning
+        model = load_model(init_path).to(device)
+        model.train()
     train(
         model,
         train_graphs,
@@ -176,26 +184,37 @@ def main(
     checkpoint = {
         "state_dict": {name: tensor.cpu() for name, tensor in model.state_dict().items()},
         "config": model.config,
+        "loss_weights": dict(loss_fn.weights),  # to know which loss produced the model
     }
     out_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(checkpoint, out_path)
 
 
-if __name__ == "__main__":
-    loss_fn = Loss(weights={
-        "screen_fill": 0.2,
-        "stress": 1,
-        "node_overlaps": 0.05,
-        "edge_overlaps": 0.05,
-        "edge_anlges": 0.05,
-    })
+# Loss in two phases, chosen on the validation split (runs: 5 + 3 fine-tunings, see docs/jalon2):
+# 1. the stress alone gives the structure of the drawing (pixel-scaled stress, from scratch);
+# 2. a short fine-tuning adds the screen metrics, each at 3 % of its "balanced" weight (1 / its mean
+#    value on the phase-1 drawings, DeepGD's Adaptive Weight), so each weighs about 3 % of the stress.
+# Test (1000 graphs) vs phase 1 continued alone: stress +3.8 %, crossings -5 %, overlapping nodes -64 %,
+# edges over nodes -15 %, better angles. Heavier weights (10 %, 30 %, 100 %) or all metrics from the
+# start degrade the stress much more (from scratch at 100 %: stress x3, 2.4x more crossings).
+# screen_fill stays at 0: the pixel-scaled stress already fills the frame, and screen_fill only pulls on
+# the nodes at the border of the drawing, which stretched the drawings.
+PHASE_1_WEIGHTS = {"stress": 1}
+PHASE_2_WEIGHTS = {
+    "stress": 1,
+    "screen_fill": 0,
+    "node_overlaps": 0.334,
+    "edge_overlaps": 0.0518,
+    "edge_anlges": 10.6,
+    "edge_crossings": 0.0131,
+    "edge_node_overlaps": 0.0646,
+}
 
-    main(
-        Path("data/rome"),
-        Path("runs/model.pt"),
-        epochs=30,
-        lr=2e-4,
-        loss_fn=loss_fn,
-        batch_size=4,
-        patience=5,
-    )
+if __name__ == "__main__":
+    data_dir = Path("data/rome")
+    # phase 1: stress alone, from scratch (~40 min on an RTX 3060)
+    main(data_dir, Path("runs/model_phase1.pt"), epochs=30, lr=2e-4, loss_fn=Loss(weights=PHASE_1_WEIGHTS),
+         batch_size=4, patience=4)
+    # phase 2: fine-tuning with the screen metrics (~25 min)
+    main(data_dir, Path("runs/model.pt"), epochs=8, lr=1e-4, loss_fn=Loss(weights=PHASE_2_WEIGHTS),
+         batch_size=4, patience=3, init_path=Path("runs/model_phase1.pt"))
