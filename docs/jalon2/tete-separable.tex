@@ -1,0 +1,212 @@
+\documentclass[aspectratio=169,11pt]{beamer}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[french]{babel}
+\usepackage{lmodern}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{tikz}
+\usepackage{fontawesome5}
+\usetikzlibrary{positioning,arrows.meta,calc,fit}
+
+\usetheme[progressbar=frametitle,numbering=fraction]{metropolis}
+
+\definecolor{nuit}{HTML}{14213D}
+\definecolor{papier}{HTML}{F7F6F2}
+\definecolor{bleu}{HTML}{1F5FAD}
+\definecolor{bleuclair}{HTML}{DCE7F6}
+\definecolor{orange}{HTML}{C2581F}
+\definecolor{orangeclair}{HTML}{F6E6DA}
+\definecolor{vert}{HTML}{2E7D32}
+\definecolor{gris}{HTML}{4A5568}
+\definecolor{trait}{HTML}{DDD8CC}
+
+\setbeamercolor{normal text}{fg=nuit,bg=papier}
+\setbeamercolor{frametitle}{fg=papier,bg=nuit}
+\setbeamercolor{progress bar}{fg=bleu,bg=bleuclair}
+\setbeamercolor{alerted text}{fg=orange}
+\setbeamercolor{title separator}{fg=bleu}
+\setbeamercolor{background canvas}{bg=papier}
+
+\tikzset{
+  carte/.style={draw=trait,fill=white,rounded corners=4pt,align=center,inner sep=6pt,font=\small,execute at begin node={\hyphenpenalty=10000}},
+  fleche/.style={-{Stealth[length=2.5mm]},thick,bleu},
+}
+
+
+% Probabilités de l'exemple (grille 5 x 5) : colonne/ligne/probabilité, ligne 1 en haut
+\newcommand{\cellules}{2/2/0.05, 3/2/0.10, 4/2/0.05, 1/3/0.05, 2/3/0.15, 3/3/0.30, 4/3/0.10, 2/4/0.05, 3/4/0.10, 4/4/0.05}
+% Grille vide 5 x 5, coin haut gauche en (0,0), cases de 0.75
+\newcommand{\grille}{%
+  \foreach \i in {0,...,4} \foreach \j in {0,...,4} \draw[trait,fill=white] (\i*0.75,-\j*0.75) rectangle ++(0.75,-0.75);}
+% Cases remplies selon leur probabilité, avec la valeur écrite
+\newcommand{\carte}{%
+  \foreach \c/\l/\p in \cellules {
+    \pgfmathsetmacro{\op}{\p/0.30}
+    \fill[orange,fill opacity=\op] (\c*0.75,-\l*0.75+0.75) rectangle ++(0.75,-0.75);
+    \node[font=\tiny] at (\c*0.75+0.375,-\l*0.75+0.375) {\p};}}
+
+\title{La tête séparable}
+\subtitle{Comment le modèle transforme un nœud en position, et comment le faire 250 fois moins cher}
+\author{Melissa Colin}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+%---------------------------------------------------------------------
+\begin{frame}{Le rôle de la tête}
+\centering
+\begin{tikzpicture}[node distance=0.6cm]
+  \node[carte] (v) {\textbf{Un nœud}\\\scriptsize vecteur de 64 nombres\\\scriptsize calculé par le GNN};
+  \node[carte,right=of v,fill=bleuclair,draw=bleu] (t) {\textbf{La tête}\\\scriptsize dernière couche};
+  \node[carte,right=of t] (p) {\textbf{Sa position}\\\scriptsize $(x, y)$ en pixels};
+  \draw[fleche] (v) -- (t);
+  \draw[fleche] (t) -- (p);
+  \begin{scope}[shift={($(p.east)+(0.8,1.1)$)}]
+    \draw[trait,fill=white] (0,0) rectangle (2.2,-2.2);
+    \fill[bleu] (1.5,-0.9) circle (2.5pt);
+    \draw[gris,dashed] (1.5,0) -- (1.5,-0.9) -- (0,-0.9);
+    \node[font=\tiny,gris,above] at (1.5,0) {$x$};
+    \node[font=\tiny,gris,left] at (0,-0.9) {$y$};
+    \node[font=\tiny,gris,below] at (1.1,-2.2) {image $500 \times 500$};
+  \end{scope}
+\end{tikzpicture}
+
+\vspace{0.8cm}
+\small La question de ces slides : \textbf{comment la tête passe du vecteur à la position}, et pourquoi on peut le faire beaucoup moins cher.
+
+\vspace{0.2cm}
+\scriptsize\textcolor{gris}{Pour que ce soit lisible, l'exemple utilise une image de $5 \times 5$ pixels au lieu de $500 \times 500$. Le principe est le même.}
+\end{frame}
+
+%---------------------------------------------------------------------
+\begin{frame}{Tête complète : une note pour chaque pixel}
+\begin{columns}[c]
+\begin{column}{0.42\textwidth}
+\centering
+\begin{tikzpicture}
+  \grille \carte
+  \foreach \i in {1,...,5} {
+    \node[font=\scriptsize,gris] at (\i*0.75-0.375,0.3) {\i};
+    \node[font=\scriptsize,gris] at (-0.3,-\i*0.75+0.375) {\i};}
+  \node[font=\scriptsize,gris] at (1.875,0.7) {colonne $x$};
+  \node[font=\scriptsize,gris,rotate=90] at (-0.75,-1.875) {ligne $y$};
+\end{tikzpicture}
+\end{column}
+\begin{column}{0.56\textwidth}
+\small
+\begin{enumerate}
+\setlength{\itemsep}{6pt}
+\item La tête donne \textbf{une note à chaque pixel} : 25 notes ici, \textbf{250\,000} pour $500 \times 500$.
+\item Un softmax les change en \textbf{probabilités} (total = 1) : une carte « où le nœud veut être ».
+\item La position est la \textbf{moyenne pondérée} :\\[3pt]
+$x = \sum_{\text{pixels}} p \times \text{colonne} = 3{,}85$\\[2pt]
+$y = \sum_{\text{pixels}} p \times \text{ligne} = 3{,}00$
+\end{enumerate}
+
+\vspace{0.2cm}
+\scriptsize\textcolor{gris}{250\,000 notes à partir de 64 nombres : $64 \times 250\,000 \approx 16$ millions de poids, 95\,\% du modèle.}
+\end{column}
+\end{columns}
+\end{frame}
+
+%---------------------------------------------------------------------
+\begin{frame}{Ce que la moyenne utilise vraiment}
+\begin{columns}[c]
+\begin{column}{0.48\textwidth}
+\centering
+\begin{tikzpicture}
+  \grille \carte
+  % totaux par colonne, sous la grille
+  \foreach \c/\t in {1/0, 2/0.05, 3/0.25, 4/0.50, 5/0.20} {
+    \pgfmathsetmacro{\op}{\t/0.5}
+    \fill[bleu,fill opacity=\op] (\c*0.75-0.75,-4.05) rectangle ++(0.75,-0.55);
+    \draw[bleu] (\c*0.75-0.75,-4.05) rectangle ++(0.75,-0.55);
+    \node[font=\tiny] at (\c*0.75-0.375,-4.325) {\t};}
+  % totaux par ligne, à droite
+  \foreach \l/\t in {1/0, 2/0.20, 3/0.60, 4/0.20, 5/0} {
+    \pgfmathsetmacro{\op}{\t/0.6}
+    \fill[vert,fill opacity=\op] (4.05,-\l*0.75+0.75) rectangle ++(0.55,-0.75);
+    \draw[vert] (4.05,-\l*0.75+0.75) rectangle ++(0.55,-0.75);
+    \node[font=\tiny] at (4.325,-\l*0.75+0.375) {\t};}
+  \draw[-{Stealth},bleu,thick] (1.875,-3.8) -- (1.875,-4.0);
+  \node[font=\scriptsize,bleu] at (1.875,-4.95) {total de chaque colonne};
+  \node[font=\scriptsize,vert,rotate=-90] at (5.0,-1.875) {total de chaque ligne};
+\end{tikzpicture}
+\end{column}
+\begin{column}{0.50\textwidth}
+\small
+On regroupe les termes de la moyenne :\\[4pt]
+$x = 1 \times \textcolor{bleu}{0} + 2 \times \textcolor{bleu}{0{,}05} + 3 \times \textcolor{bleu}{0{,}25} + 4 \times \textcolor{bleu}{0{,}50} + 5 \times \textcolor{bleu}{0{,}20} = 3{,}85$\\[3pt]
+$y = 2 \times \textcolor{vert}{0{,}20} + 3 \times \textcolor{vert}{0{,}60} + 4 \times \textcolor{vert}{0{,}20} = 3{,}00$
+
+\vspace{0.4cm}
+\begin{tikzpicture}
+  \node[carte,draw=orange,fill=orangeclair,text width=0.9\linewidth,align=left] {\small $x$ ne dépend que des \textcolor{bleu}{\textbf{totaux par colonne}}, $y$ que des \textcolor{vert}{\textbf{totaux par ligne}}. Le détail de la carte, lui, ne change pas la position.};
+\end{tikzpicture}
+\end{column}
+\end{columns}
+\end{frame}
+
+%---------------------------------------------------------------------
+\begin{frame}{Tête séparable : prédire directement les totaux}
+\begin{columns}[c]
+\begin{column}{0.46\textwidth}
+\centering
+\begin{tikzpicture}
+  \node[font=\small\bfseries] at (1.875,0.5) {5 notes pour les colonnes};
+  \foreach \c/\t in {1/0, 2/0.05, 3/0.25, 4/0.50, 5/0.20} {
+    \pgfmathsetmacro{\op}{\t/0.5}
+    \fill[bleu,fill opacity=\op] (\c*0.75-0.75,0) rectangle ++(0.75,-0.55);
+    \draw[bleu] (\c*0.75-0.75,0) rectangle ++(0.75,-0.55);
+    \node[font=\tiny] at (\c*0.75-0.375,-0.275) {\t};}
+  \node[font=\small,bleu] at (1.875,-1.0) {$\Rightarrow x = 3{,}85$};
+  \node[font=\small\bfseries] at (1.875,-1.9) {5 notes pour les lignes};
+  \foreach \l/\t in {1/0, 2/0.20, 3/0.60, 4/0.20, 5/0} {
+    \pgfmathsetmacro{\op}{\t/0.6}
+    \fill[vert,fill opacity=\op] (\l*0.75-0.75,-2.4) rectangle ++(0.75,-0.55);
+    \draw[vert] (\l*0.75-0.75,-2.4) rectangle ++(0.75,-0.55);
+    \node[font=\tiny] at (\l*0.75-0.375,-2.675) {\t};}
+  \node[font=\small,vert] at (1.875,-3.4) {$\Rightarrow y = 3{,}00$};
+\end{tikzpicture}
+\end{column}
+\begin{column}{0.52\textwidth}
+\small
+\begin{itemize}
+\setlength{\itemsep}{6pt}
+\item Au lieu de la carte entière, la tête prédit \textbf{une note par colonne} et \textbf{une par ligne} : $5 + 5 = 10$ notes ici, \textbf{1\,000} pour $500 \times 500$.
+\item Un softmax pour les colonnes, un pour les lignes, puis la même moyenne pondérée : \textbf{même position} $(3{,}85\,;\,3{,}00)$.
+\item \textbf{Rien n'est perdu} : toute position de la tête complète s'obtient ainsi, et inversement.
+\end{itemize}
+\end{column}
+\end{columns}
+\end{frame}
+
+%---------------------------------------------------------------------
+\begin{frame}{Ce qu'on y gagne, pour une image de $500 \times 500$}
+\centering
+\small
+\begin{tabular}{@{}lcc@{}}
+\toprule
+ & \textbf{Tête complète} & \textbf{Tête séparable} \\
+\midrule
+Stress normalisé $\downarrow$ & 0,065 & \textbf{0,064} \\
+Croisements d'arêtes $\downarrow$ & 30,5 & \textbf{30,4} \\
+Nœuds superposés $\downarrow$ & 0,06\,\% & \textbf{0,04\,\%} \\
+\midrule
+Notes par nœud & 250\,000 & \textbf{1\,000} \\
+Paramètres du modèle entier & 17\,M & \textbf{841\,k} \quad\scriptsize\textcolor{gris}{(CoRe-GD : 930\,k)} \\
+Mémoire GPU pendant le dessin & 289 Mo & \textbf{3 Mo} \\
+Temps par graphe & 18 ms & \textbf{12 ms} \\
+Une epoch d'entraînement & $\sim$3 min & \textbf{$\sim$1 min 15} \\
+Epochs (même temps de calcul) & 15 & 30 au plus \\
+\bottomrule
+\end{tabular}
+
+\vspace{0.25cm}
+\scriptsize\textcolor{gris}{Les 1\,000 graphes de test de Rome, même loss (stress seul). La tête séparable apprend plus lentement par epoch, mais chaque epoch coûte 2,6 fois moins : à temps de calcul égal, elle fait aussi bien ou mieux partout.}
+\end{frame}
+
+\end{document}
