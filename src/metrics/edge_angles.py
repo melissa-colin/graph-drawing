@@ -3,7 +3,7 @@ import torch
 
 from data.input import GraphInput
 from data.output import Layout
-from metrics.batching import node_graph, per_graph
+from metrics.batching import cached, node_graph, per_graph
 
 
 def edge_angles(layout: Layout, graph: GraphInput) -> torch.Tensor:
@@ -22,12 +22,17 @@ def edge_angles(layout: Layout, graph: GraphInput) -> torch.Tensor:
     écarts entre directions consécutives (O(E log E), au lieu de la matrice E x E de toutes les paires).
     """
     pos = layout.positions
-    src, dst = graph.edge_index_bidirectional.to(pos.device)  # each edge seen from both ends
     n = pos.shape[0]
     two_pi = 2 * math.pi
     node_graph_index, num_graphs = node_graph(graph, pos.device)
-    degree = torch.bincount(src, minlength=n)
-    has_angle = degree >= 2
+
+    def static():  # depends on the graph only: cached while refining one graph
+        src, dst = graph.edge_index_bidirectional.to(pos.device)  # each edge seen from both ends
+        degree = torch.bincount(src, minlength=n)
+        has_angle = degree >= 2
+        count = per_graph(has_angle.to(pos.dtype), node_graph_index, num_graphs, "sum")
+        return src, dst, degree, has_angle, count
+    src, dst, degree, has_angle, count = cached(graph, ("angles", str(pos.device)), static)
 
     # direction of each edge leaving its node; a zero-length edge has no direction: no gradient through it
     vec = pos[dst] - pos[src]
@@ -53,5 +58,4 @@ def edge_angles(layout: Layout, graph: GraphInput) -> torch.Tensor:
 
     # mean over the nodes of degree >= 2 of each graph (0 for a graph without any), then over the graphs
     total = per_graph(per_node, node_graph_index, num_graphs, "sum")
-    count = per_graph(has_angle.to(pos.dtype), node_graph_index, num_graphs, "sum")
     return (total / count.clamp_min(1)).mean() + pos.sum() * 0.0  # + 0 linked to pos: backward always works

@@ -20,7 +20,7 @@ Architecture : batched_overlap, _boxes et _clip_to_strip peuvent aller dans metr
 import torch
 
 from data.raster.sdf import node_coverage_torch, edge_coverage_torch, coverage_margin
-from metrics.batching import node_graph, edge_width
+from metrics.batching import cached, node_graph, edge_width
 
 
 def _col(t):
@@ -85,11 +85,14 @@ def node_overlaps(layout, graph, softness=0.5):
     margin = coverage_margin(softness)
     node_graph_index, num_graphs = node_graph(graph, pos.device)
 
+    # partie fixe (dépend du graphe seul), mise en cache pendant l'affinage d'un graphe
+    same_graph = cached(graph, ("node_same_graph", str(pos.device)),
+                        lambda: torch.triu(node_graph_index[:, None] == node_graph_index[None, :], diagonal=1))
+
     with torch.no_grad():  # sélection des paires et des boîtes : sans gradient, comme avant
-        same_graph = node_graph_index[:, None] == node_graph_index[None, :]
         # chaque couverture déborde de `margin` au-delà du rayon : le produit peut être non nul jusqu'à
         # r_i + r_j + 2 margin (l'ancien filtre, à 1 margin, ratait ces queues)
-        close = torch.triu((torch.cdist(pos, pos) < r[:, None] + r[None, :] + 2 * margin) & same_graph, diagonal=1)
+        close = (torch.cdist(pos, pos) < r[:, None] + r[None, :] + 2 * margin) & same_graph
         i, j = close.nonzero(as_tuple=True)
         lo = torch.maximum(pos[i] - r[i, None], pos[j] - r[j, None]) - margin
         hi = torch.minimum(pos[i] + r[i, None], pos[j] + r[j, None]) + margin
@@ -127,12 +130,19 @@ def _clip_to_strip(p0, p1, a, b, half_width):
 
 def edge_overlaps(layout, graph, softness=0.5):
     pos = layout.positions  # (N, 2)
-    u, v = graph.edge_index.to(pos.device)  # (E,), (E,)
     H, W = layout.height, layout.width
     margin = coverage_margin(softness)
     node_graph_index, num_graphs = node_graph(graph, pos.device)
-    edge_graph = node_graph_index[u]
-    w = edge_width(graph, edge_graph, pos)  # (E,) : un float par graphe, répété sur ses arêtes
+
+    def static():  # paires d'arêtes du même graphe sans sommet commun : fixe, mise en cache à l'affinage
+        u, v = graph.edge_index.to(pos.device)
+        edge_graph = node_graph_index[u]
+        w = edge_width(graph, edge_graph, pos)  # (E,) : un float par graphe, répété sur ses arêtes
+        share = ((u[:, None] == u[None, :]) | (u[:, None] == v[None, :])
+                 | (v[:, None] == u[None, :]) | (v[:, None] == v[None, :]))
+        allowed = torch.triu(~share & (edge_graph[:, None] == edge_graph[None, :]), diagonal=1)
+        return u, v, w, allowed
+    u, v, w, allowed = cached(graph, ("edge_pairs", str(pos.device)), static)
 
     pu, pv = pos[u], pos[v]  # avec gradient (extrémités de chaque arête)
 
@@ -144,10 +154,7 @@ def edge_overlaps(layout, graph, softness=0.5):
         # `margin`, donc deux boîtes peuvent être séparées de 2 margin et se recouvrir quand même.
         touch = ((box_min[:, None] - 2 * margin < box_max[None, :])
                  & (box_min[None, :] - 2 * margin < box_max[:, None])).all(dim=-1)
-        share = ((u[:, None] == u[None, :]) | (u[:, None] == v[None, :])
-                 | (v[:, None] == u[None, :]) | (v[:, None] == v[None, :]))
-        same_graph = edge_graph[:, None] == edge_graph[None, :]
-        i, j = torch.triu(touch & ~share & same_graph, diagonal=1).nonzero(as_tuple=True)
+        i, j = (touch & allowed).nonzero(as_tuple=True)
 
         # Boîte serrée (optimisation) : la couverture d'une arête est nulle au-delà de rho = w/2 + margin
         # du segment. Un pixel couvert par les deux arêtes est donc à moins de rho_i d'un point de i qui est
@@ -179,19 +186,22 @@ def edge_node_overlaps(layout, graph, softness=0.5):
     edge_overlaps (somme des produits des couvertures SDF, pixel par pixel)."""
     pos = layout.positions  # (N, 2)
     r = graph.node_size.to(device=pos.device, dtype=pos.dtype)  # (N,)
-    u, v = graph.edge_index.to(pos.device)
     H, W = layout.height, layout.width
     margin = coverage_margin(softness)
     node_graph_index, num_graphs = node_graph(graph, pos.device)
-    edge_graph = node_graph_index[u]
-    w = edge_width(graph, edge_graph, pos)
 
-    with torch.no_grad():
-        # paires (arête e, nœud k) du même graphe, k n'étant pas une extrémité de e
+    def static():  # paires (arête e, nœud k) du même graphe, k n'étant pas une extrémité de e : fixe
+        u, v = graph.edge_index.to(pos.device)
+        edge_graph = node_graph_index[u]
+        w = edge_width(graph, edge_graph, pos)
         k_all = torch.arange(pos.shape[0], device=pos.device)
         candidates = (edge_graph[:, None] == node_graph_index[None, :]) \
             & (u[:, None] != k_all[None, :]) & (v[:, None] != k_all[None, :])
         e, k = candidates.nonzero(as_tuple=True)
+        return u, v, w, e, k
+    u, v, w, e, k = cached(graph, ("edge_node_pairs", str(pos.device)), static)
+
+    with torch.no_grad():
         # filtre exact : couvertures nulles au-delà de r + margin du centre et de w/2 + margin du segment
         reach = r[k] + w[e] / 2 + 2 * margin
         keep = _point_segment_distance(pos[k], pos[u[e]], pos[v[e]]) < reach

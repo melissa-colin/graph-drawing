@@ -2,7 +2,7 @@ import torch
 
 from data.input import GraphInput
 from data.output import Layout
-from metrics.batching import node_graph
+from metrics.batching import cached, node_graph
 
 
 def _side(a, b, p):
@@ -10,6 +10,21 @@ def _side(a, b, p):
     ab = b - a
     cross = ab[:, 0] * (p[:, 1] - a[:, 1]) - ab[:, 1] * (p[:, 0] - a[:, 0])
     return cross / ab.norm(dim=1).clamp_min(1e-9)
+
+
+def _candidate_pairs(graph, device):
+    """Pairs (i, j), i < j, of edges of the same graph without a common node: the only pairs that can
+    cross. Static (depends on the graph only), cached while refining one graph."""
+    def compute():
+        u, v = graph.edge_index.to(device)
+        node_graph_index, _ = node_graph(graph, device)
+        edge_graph = node_graph_index[u]
+        candidates = (edge_graph[:, None] == edge_graph[None, :]) & ~(
+            (u[:, None] == u[None, :]) | (u[:, None] == v[None, :])
+            | (v[:, None] == u[None, :]) | (v[:, None] == v[None, :]))
+        i, j = torch.triu(candidates, diagonal=1).nonzero(as_tuple=True)
+        return u, v, i, j
+    return cached(graph, ("crossing_pairs", str(device)), compute)
 
 
 def edge_crossings(layout: Layout, graph: GraphInput) -> torch.Tensor:
@@ -24,15 +39,10 @@ def edge_crossings(layout: Layout, graph: GraphInput) -> torch.Tensor:
     Pairs sharing a node are ignored. graph can be a PyG batch: sum per graph, mean over the graphs.
     """
     pos = layout.positions
-    u, v = graph.edge_index.to(pos.device)
-    node_graph_index, num_graphs = node_graph(graph, pos.device)
+    _, num_graphs = node_graph(graph, pos.device)
+    u, v, i, j = _candidate_pairs(graph, pos.device)
 
     with torch.no_grad():  # which pairs cross: geometry only, no gradient
-        edge_graph = node_graph_index[u]
-        candidates = (edge_graph[:, None] == edge_graph[None, :]) & ~(
-            (u[:, None] == u[None, :]) | (u[:, None] == v[None, :])
-            | (v[:, None] == u[None, :]) | (v[:, None] == v[None, :]))
-        i, j = torch.triu(candidates, diagonal=1).nonzero(as_tuple=True)
         a, b, c, d = pos[u[i]], pos[v[i]], pos[u[j]], pos[v[j]]
         crossing = (_side(a, b, c) * _side(a, b, d) < 0) & (_side(c, d, a) * _side(c, d, b) < 0)
         i, j = i[crossing], j[crossing]

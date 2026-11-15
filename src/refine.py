@@ -13,6 +13,7 @@ from torch_geometric.data import Batch
 
 from data.output import Layout
 from loss import Loss
+from metrics.batching import static_cache
 
 ROUNDS = 12   # model rounds at inference (trained around 5: more rounds keep improving the drawing)
 STEPS = 25    # Adam steps on the positions
@@ -24,7 +25,8 @@ def refine(layout: Layout, graph, loss_fn: Loss, steps: int = STEPS, lr: float =
     graph can be a PyG batch: each graph keeps its own positions (the loss is a mean over the graphs)."""
     positions = layout.positions.detach().clone().requires_grad_(True)
     optimizer = torch.optim.Adam([positions], lr=lr)
-    with torch.enable_grad():
+    # static_cache: the parts of the metrics that depend on the graph only are computed once, not per step
+    with torch.enable_grad(), static_cache(graph):
         for _ in range(steps):
             optimizer.zero_grad()
             loss = loss_fn(Layout(positions, layout.width, layout.height), graph)[0]
