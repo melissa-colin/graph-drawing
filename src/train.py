@@ -192,7 +192,7 @@ if __name__ == "__main__":
         "stress": 1,
         "node_overlaps": 0.05,
         "edge_overlaps": 0.05,
-        "edge_anlges": 0.05, # TODO
+        "edge_anlges": 0.05,
     })
 
     main(
