@@ -207,7 +207,8 @@ def split_dataset(data_dir):
     names = re.findall(r"name: (grafo\d+\.\d+)", (data_dir / "Graph.log").read_text())
     names = sorted(names, key=lambda name: int(re.search(r"grafo(\d+)", name).group(1)))
     paths = [data_dir / f"{name}.graphml" for name in names]
-    connected = [path for path in paths if nx.is_connected(nx.read_graphml(path))]
+    connected = [path for path in tqdm(paths, desc="Split (connectivity)", unit="graph", leave=True)
+                 if nx.is_connected(nx.read_graphml(path))]
 
     random.seed(12345)  # global seed, as in their code: random.shuffle must draw the same permutation
     random.shuffle(connected)
