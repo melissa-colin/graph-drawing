@@ -200,8 +200,12 @@ def main(
 # screen_fill stays at 0: the pixel-scaled stress already fills the frame, and screen_fill only pulls on
 # the nodes at the border of the drawing, which stretched the drawings.
 PHASE_1_WEIGHTS = {"stress": 1}
+# The phase-2 stress is the scale-normalized one (shape only, at the best scale: what the benchmark
+# measures, and what CoRe-GD trains on): in phase 1 the pixel-scaled stress has already set the size of
+# the drawing. On the validation split, with refinement, vs the same recipe with the pixel-scaled stress:
+# stress 0.0610 vs 0.0615, crossings 27.4 vs 27.9, angles 0.657 vs 0.647, others unchanged.
 PHASE_2_WEIGHTS = {
-    "stress": 1,
+    "scaled_stress": 1,
     "screen_fill": 0,
     "node_overlaps": 0.334,
     "edge_overlaps": 0.0518,
