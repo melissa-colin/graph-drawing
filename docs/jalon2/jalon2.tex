@@ -34,7 +34,7 @@
 }
 
 \title{Dessiner un graphe directement en espace écran}
-\subtitle{Jalon 1 : où en est le projet}
+\subtitle{Jalon 2 : où en est le projet}
 \author{Melissa Colin \and Quentin Lopez \and Yani Haouchine}
 \institute{ENSEIRB-MATMECA 3A, projet semestriel \quad·\quad Encadrant : Romain Giot (LaBRI)}
 \date{6 novembre 2026}
@@ -378,7 +378,7 @@ Dessins provisoires d'un graphe de 41 nœuds jamais vu à l'entraînement.
 \end{frame}
 
 %---------------------------------------------------------------------
-\begin{frame}{La loss : les métriques pour les arêtes, en cours}
+\begin{frame}{La loss : les métriques pour les arêtes}
 \begin{columns}[T]
 \begin{column}{0.45\textwidth}
 \centering
@@ -396,7 +396,7 @@ Dessins provisoires d'un graphe de 41 nœuds jamais vu à l'entraînement.
   \end{scope}
 \end{tikzpicture}\\[6pt]
 \footnotesize Pénalise la zone où deux arêtes épaisses se recouvrent, avec des SDF.\\
-\textcolor{gris}{inspirée du nombre de croisements}
+\textcolor{gris}{ne décroise pas à elle seule : la zone est la même où que soit le croisement}
 \end{column}
 \begin{column}{0.45\textwidth}
 \centering
@@ -411,9 +411,12 @@ Dessins provisoires d'un graphe de 41 nœuds jamais vu à l'entraînement.
   \fill[bleu] (o) circle (2.2pt);
 \end{tikzpicture}\\[6pt]
 \footnotesize Éviter les angles trop petits entre arêtes d'un même nœud.\\
-\textcolor{gris}{reprendre l'angular resolution telle quelle ? à décider}
+\textcolor{gris}{plus petit angle de chaque nœud comparé à $2\pi / \deg(v)$ (Purchase)}
 \end{column}
 \end{columns}
+
+\vspace{0.4cm}
+\centering\footnotesize Ajoutés ensuite : \textbf{croisements} (pour chaque paire qui se croise, le plus petit déplacement d'une extrémité qui la décroise) et \textbf{arête sur un nœud} (une arête qui passe sur un nœud qu'elle ne relie pas, avec des SDF).
 \end{frame}
 
 %---------------------------------------------------------------------
@@ -438,9 +441,9 @@ Dessins provisoires d'un graphe de 41 nœuds jamais vu à l'entraînement.
  & \textbf{normalisé} $\downarrow$ & \textbf{d'arêtes} $\downarrow$ & \textbf{superposés} $\downarrow$ && & \textbf{par graphe} & \textbf{GPU} \\
 \midrule
 Aléatoire & 0,420 & 630,9 & 0,08\,\% && -- & 0,1 ms & -- \\
-Notre modèle & 0,065 & 30,5 & 0,06\,\% && 17\,M & \textbf{18 ms} & 289 Mo \\
+Notre modèle & 0,065 & \textbf{29,0} & 0,01\,\% && 841\,k & \textbf{11 ms} & 3 Mo \\
 \midrule
-Kamada-Kawai & 0,062 & 30,0 & \textbf{0\,\%} && -- & 34 ms & -- \\
+Kamada-Kawai & 0,062 & 30,0 & \textbf{0\,\%} && -- & 35 ms & -- \\
 DeepGD & 0,060 & 30,1 & 0,02\,\% && 42\,k & 48 ms & 6 Mo \\
 CoRe-GD & \textbf{0,059} & \textbf{29,0} & \textbf{0\,\%} && 930\,k & 60 ms & 2 Mo \\
 \bottomrule
@@ -448,41 +451,81 @@ CoRe-GD & \textbf{0,059} & \textbf{29,0} & \textbf{0\,\%} && 930\,k & 60 ms & 2 
 
 \vspace{0.2cm}
 \begin{tikzpicture}
-  \node[carte,draw=orange,fill=orangeclair,text width=0.9\textwidth,align=left,inner sep=4pt] {\small\textbf{Loss utilisée} : le stress seul, mis à l'échelle des pixels. Les autres métriques ont un poids nul pour l'instant.};
+  \node[carte,draw=orange,fill=orangeclair,text width=0.9\textwidth,align=left,inner sep=4pt] {\small\textbf{Loss} : le stress seul (en pixels), puis un court affinage avec les métriques écran, chacune à environ 3\,\% du stress.};
 \end{tikzpicture}
 
 \vspace{0.1cm}
 \begin{minipage}{0.96\textwidth}
-\scriptsize\textcolor{gris}{Les 1\,000 graphes de test de Rome, même découpage pour les trois modèles appris. Stress normalisé : \emph{scale-normalized stress} (Ahmed et al., 2026), divisé par le nombre de paires. Temps sur RTX 3060, prétraitement compté pour DeepGD et CoRe-GD, pas pour nous (calculé à l'avance). Mémoire : pic GPU hors poids. 16\,M de nos 17\,M paramètres sont dans la tête soft-argmax.}
+\scriptsize\textcolor{gris}{Les 1\,000 graphes de test de Rome, même découpage pour les trois modèles appris. Stress normalisé : \emph{scale-normalized stress} (Ahmed et al., 2026), divisé par le nombre de paires. Temps sur RTX 3060, prétraitement compté pour DeepGD et CoRe-GD, pas pour nous (calculé à l'avance). Mémoire : pic GPU hors poids.}
 \end{minipage}
 \end{frame}
 
 %---------------------------------------------------------------------
-\begin{frame}{Suite : d'ici le jalon 2}
-\begin{enumerate}
-\setlength{\itemsep}{7pt}
-\item Ajouter les autres métriques à la loss, avec des poids choisis (le stress seul est fait)
-\item Ajouter les métriques sur les arêtes (chevauchements, angles)
-\item Faire occuper tout le cadre aux dessins, qui restent souvent dans un coin
-\item Déplier les dessins, souvent repliés : la structure du graphe n'est vue que localement. Piste : des convolutions sur des voisinages plus larges que les voisins directs (2 ou 3 sauts)
-\item Stabiliser l'entraînement, dont la validation varie beaucoup d'une epoch à l'autre
-\item Comparer aléatoire, Kamada-Kawai, méthodes apprises et notre modèle sur les mêmes métriques
-\end{enumerate}
+\begin{frame}{Ce qu'apportent les métriques écran}
+\centering
+\footnotesize
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+ & \textbf{Stress} & \textbf{Croise-} & \textbf{Nœuds} & \textbf{Arête sur} & \textbf{Angle} \\
+ & $\downarrow$ & \textbf{ments} $\downarrow$ & \textbf{superposés} $\downarrow$ & \textbf{nœud} $\downarrow$ & \textbf{min.} $\uparrow$ \\
+\midrule
+Stress seul & \textbf{0,0629} & 30,7 & 0,028\,\% & 7,7 & 0,608 \\
++ métriques écran (3\,\%) & 0,0653 & \textbf{29,0} & \textbf{0,010\,\%} & \textbf{6,5} & \textbf{0,615} \\
+\midrule
+Écart & +4\,\% & $-$5\,\% & $-$64\,\% & $-$15\,\% & + \\
+\bottomrule
+\end{tabular}
+
+\vspace{0.35cm}
+\begin{minipage}{0.92\textwidth}
+\small
+\begin{itemize}
+\setlength{\itemsep}{3pt}
+\item \textbf{Poids choisis sur la validation} parmi 8 essais : 3\,\% est le plus fort dosage qui coûte moins de 5\,\% de stress. À 10\,\%, 30\,\% ou 100\,\%, le stress se dégrade bien plus pour peu de gain.
+\item \textbf{Tout mélanger dès le départ échoue} : stress $\times 3$, croisements $\times 2{,}4$. Le stress donne la structure, les autres termes corrigent ensuite les défauts locaux.
+\item \textbf{Les angles aident à décroiser} : sans eux, les croisements ne baissent plus.
+\end{itemize}
+\end{minipage}
+
+\vspace{0.1cm}
+\scriptsize\textcolor{gris}{Les 1\,000 graphes de test, mesurés une seule fois. Les deux lignes partent du même modèle et ont le même nombre d'epochs d'affinage.}
 \end{frame}
 
 %---------------------------------------------------------------------
-\begin{frame}{Suite : alléger la sortie soft-argmax}
-\small Aujourd'hui : 250\,000 scores par nœud (une carte $500 \times 500$), donc 4 graphes par batch au plus sur notre GPU.
+\begin{frame}{Fait : une tête soft-argmax séparable}
+\small La position est la moyenne de la carte de probabilités : $x$ ne dépend que des totaux par colonne, $y$ que des totaux par ligne. On prédit donc directement ces deux totaux.
 
-\vspace{0.4cm}
+\vspace{0.3cm}
 \centering
-\begin{tikzpicture}[node distance=0.4cm]
-  \node[carte,text width=2.6cm,draw=bleu,line width=0.8pt] (a) {\textbf{Tête séparable}\\[2pt]\scriptsize 500 scores pour $x$, 500 pour $y$ : même position, 250 fois moins de mémoire};
-  \node[carte,text width=2.6cm,right=of a] (b) {\textbf{Grille plus grossière}\\[2pt]\scriptsize $100 \times 100$ : la position reste continue};
-  \node[carte,text width=2.6cm,right=of b] (c) {\textbf{Précision mixte}\\[2pt]\scriptsize calculs en 16 bits};
-  \node[carte,text width=2.6cm,right=of c] (d) {\textbf{Accumulation}\\[2pt]\scriptsize simuler un batch de 16 avec $4 \times 4$};
-\end{tikzpicture}
+\footnotesize
+\begin{tabular}{@{}lcc@{}}
+\toprule
+ & \textbf{Tête complète} & \textbf{Tête séparable} \\
+\midrule
+Scores par nœud & 250\,000 & \textbf{1\,000} \\
+Paramètres du modèle & 17\,M & \textbf{841\,k} \\
+Mémoire GPU & 289 Mo & \textbf{3 Mo} \\
+Temps par graphe & 18 ms & \textbf{11 ms} \\
+Stress / croisements / nœuds superposés & 0,065 / 30,5 / 0,06\,\% & \textbf{0,064 / 30,4 / 0,04\,\%} \\
+\bottomrule
+\end{tabular}
+
+\vspace{0.3cm}
+\scriptsize\textcolor{gris}{Même ensemble de positions possibles. Qualité comparée à temps de calcul égal (stress seul, 15 epochs pour la tête complète, 30 au plus pour la séparable).}
 \end{frame}
+
+%---------------------------------------------------------------------
+\begin{frame}{Suite}
+\begin{enumerate}
+\setlength{\itemsep}{7pt}
+\item Réduire le stress restant (0,065 contre 0,059 pour CoRe-GD) : entraînements plus longs, mémoire de rejeu de CoRe-GD
+\item Déplier les dessins, souvent repliés : la structure du graphe n'est vue que localement. Piste : des convolutions sur des voisinages plus larges que les voisins directs (2 ou 3 sauts)
+\item Stabiliser l'entraînement, dont la validation varie beaucoup d'une epoch à l'autre
+\item Répéter chaque réglage avec plusieurs graines, pour confirmer les petits écarts
+\end{enumerate}
+\end{frame}
+
 
 %---------------------------------------------------------------------
 \begin{frame}{Suite : une taille d'image variable}

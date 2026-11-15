@@ -1,6 +1,6 @@
 """Figure de la slide « Le modèle tour par tour » : les dessins provisoires que le modèle calcule à chaque
 tour de la boucle, sur un graphe de test qu'il n'a jamais vu. Même calcul que LayoutModel.forward
-(src/model.py), en gardant les positions intermédiaires. Modèle : runs/model_stress_px.pt, celui du tableau
+(src/model.py), en gardant les positions intermédiaires. Modèle : runs/model_final.pt, celui du tableau
 de résultats. Lancer depuis la racine du projet : python docs/jalon2/fig_iterations.py"""
 import sys
 from pathlib import Path
@@ -15,7 +15,7 @@ from data.input import load_graphml
 from model import LayoutModel, knn_edges
 
 GRAPH = Path("data/rome/grafo7007.41.graphml")  # dans le test de CoRe-GD et dans le nôtre
-CHECKPOINT = Path("runs/model_stress_px.pt")
+CHECKPOINT = Path("runs/model_final.pt")
 STAR = 0  # nœud dont on montre les 8 voisins dans le dessin
 OUT = Path("docs/jalon2/iterations.png")
 
