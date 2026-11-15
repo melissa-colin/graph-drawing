@@ -169,3 +169,54 @@ def edge_overlaps(layout, graph, softness=0.5):
             X, Y, (_col(a[idx, 0]), _col(a[idx, 1])), (_col(b[idx, 0]), _col(b[idx, 1])), _col(width[idx]), softness)
 
     return batched_overlap(x0, y0, x1, y1, cov(pu[i], pv[i], w[i]), cov(pu[j], pv[j], w[j]), pos) / num_graphs
+
+# --------------------------------------------------------------------------------------------
+# Arête sur un nœud
+# --------------------------------------------------------------------------------------------
+def edge_node_overlaps(layout, graph, softness=0.5):
+    """Surface (en pixels) où une arête recouvre un nœud qui n'est pas une de ses extrémités : une arête
+    qui passe sur un nœud fait croire qu'elle y est reliée. Même principe que node_overlaps et
+    edge_overlaps (somme des produits des couvertures SDF, pixel par pixel)."""
+    pos = layout.positions  # (N, 2)
+    r = graph.node_size.to(device=pos.device, dtype=pos.dtype)  # (N,)
+    u, v = graph.edge_index.to(pos.device)
+    H, W = layout.height, layout.width
+    margin = coverage_margin(softness)
+    node_graph_index, num_graphs = node_graph(graph, pos.device)
+    edge_graph = node_graph_index[u]
+    w = edge_width(graph, edge_graph, pos)
+
+    with torch.no_grad():
+        # paires (arête e, nœud k) du même graphe, k n'étant pas une extrémité de e
+        k_all = torch.arange(pos.shape[0], device=pos.device)
+        candidates = (edge_graph[:, None] == node_graph_index[None, :]) \
+            & (u[:, None] != k_all[None, :]) & (v[:, None] != k_all[None, :])
+        e, k = candidates.nonzero(as_tuple=True)
+        # filtre exact : couvertures nulles au-delà de r + margin du centre et de w/2 + margin du segment
+        reach = r[k] + w[e] / 2 + 2 * margin
+        keep = _point_segment_distance(pos[k], pos[u[e]], pos[v[e]]) < reach
+        e, k = e[keep], k[keep]
+        node_lo, node_hi = pos[k] - (r[k] + margin)[:, None], pos[k] + (r[k] + margin)[:, None]
+        edge_lo = torch.minimum(pos[u[e]], pos[v[e]]) - (w[e] / 2 + margin)[:, None]
+        edge_hi = torch.maximum(pos[u[e]], pos[v[e]]) + (w[e] / 2 + margin)[:, None]
+        x0, y0, x1, y1, keep = _boxes(torch.maximum(node_lo, edge_lo), torch.minimum(node_hi, edge_hi), W, H)
+    e, k, x0, y0, x1, y1 = (t[keep] for t in (e, k, x0, y0, x1, y1))
+
+    pa, pb, pk = pos[u[e]], pos[v[e]], pos[k]  # avec gradient
+    we, rk = w[e], r[k]
+
+    def cov_edge(X, Y, idx):
+        return edge_coverage_torch(X, Y, (_col(pa[idx, 0]), _col(pa[idx, 1])), (_col(pb[idx, 0]), _col(pb[idx, 1])),
+                                   _col(we[idx]), softness)
+
+    def cov_node(X, Y, idx):
+        return node_coverage_torch(X, Y, (_col(pk[idx, 0]), _col(pk[idx, 1])), _col(rk[idx]), softness)
+
+    return batched_overlap(x0, y0, x1, y1, cov_edge, cov_node, pos) / num_graphs
+
+
+def _point_segment_distance(p, a, b):
+    """Distance de chaque point p au segment [a, b] correspondant. Tous de forme (K, 2)."""
+    ab = b - a
+    t = (((p - a) * ab).sum(-1) / (ab * ab).sum(-1).clamp_min(1e-12)).clamp(0, 1)
+    return (p - (a + t[:, None] * ab)).norm(dim=-1)

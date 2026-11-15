@@ -13,7 +13,8 @@ from metrics.stress import stress
 #from metrics.node_overlaps import node_overlaps
 #from metrics.edge_overlaps import edge_overlaps
 
-from metrics.overlaps_vectorised import node_overlaps, edge_overlaps
+from metrics.overlaps_vectorised import node_overlaps, edge_overlaps, edge_node_overlaps
+from metrics.edge_crossings import edge_crossings
 from metrics.edge_angles import edge_angles
 
 LossFn = Callable[[Layout, GraphInput], tuple[torch.Tensor, dict[str, torch.Tensor]]]
@@ -39,6 +40,8 @@ class Loss(nn.Module):
             "node_overlaps": node_overlaps,
             "edge_overlaps": edge_overlaps,
             "edge_anlges": edge_angles,
+            "edge_crossings": edge_crossings,
+            "edge_node_overlaps": edge_node_overlaps,
         }
 
         for name, metric_fn in metrics.items():
