@@ -442,18 +442,18 @@ Dessins provisoires d'un graphe de 41 nœuds jamais vu à l'entraînement.
  & \textbf{normalisé} $\downarrow$ & \textbf{d'arêtes} $\downarrow$ & \textbf{superposés} $\downarrow$ && & \textbf{par graphe} & \textbf{GPU} \\
 \midrule
 Aléatoire & 0,420 & 630,9 & 0,08\,\% && -- & 0,1 ms & -- \\
-Notre modèle & 0,064 & 28,0 & \textbf{0\,\%} && 841\,k & \textbf{27 ms} & 3 Mo \\
-Notre modèle + affinage & 0,062 & \textbf{27,6} & \textbf{0\,\%} && 841\,k & 260 ms & 3 Mo \\
+Notre modèle & 0,063 & 27,5 & \textbf{0\,\%} && 841\,k & \textbf{26 ms} & 3 Mo \\
+Notre modèle + affinage & 0,062 & \textbf{27,1} & \textbf{0\,\%} && 841\,k & 241 ms & 3 Mo \\
 \midrule
 Kamada-Kawai & 0,062 & 30,0 & \textbf{0\,\%} && -- & 36 ms & -- \\
 DeepGD & 0,060 & 30,1 & 0,02\,\% && 42\,k & 47 ms & 6 Mo \\
-CoRe-GD & \textbf{0,059} & 29,1 & \textbf{0\,\%} && 930\,k & 61 ms & 2 Mo \\
+CoRe-GD & \textbf{0,059} & 28,9 & \textbf{0\,\%} && 930\,k & 60 ms & 2 Mo \\
 \bottomrule
 \end{tabular}}
 
 \vspace{0.2cm}
 \begin{tikzpicture}
-  \node[carte,draw=orange,fill=orangeclair,text width=0.9\textwidth,align=left,inner sep=4pt] {\small\textbf{Loss} : le stress seul (en pixels), puis un court affinage avec les métriques écran, chacune à environ 3\,\% du stress.};
+  \node[carte,draw=orange,fill=orangeclair,text width=0.9\textwidth,align=left,inner sep=4pt] {\small\textbf{Loss} : le stress seul (en pixels), puis un court affinage avec le stress à l'échelle optimale et les métriques écran, chacune à environ 3\,\% du stress.};
 \end{tikzpicture}
 
 \vspace{0.1cm}
@@ -515,9 +515,8 @@ Stress seul & \textbf{0,0629} & 30,7 & 0,028\,\% & 7,7 & 0,608 \\
  & $\downarrow$ & \textbf{ments} $\downarrow$ & \textbf{superposés} $\downarrow$ & \textbf{nœud} $\downarrow$ & \textbf{min.} $\uparrow$ & \textbf{/ graphe} \\
 \midrule
 Modèle « stress seul » & 0,0621 & 30,9 & 0,026\,\% & 7,8 & 0,610 & 1 ms \\
-Modèle final, 5 tours & 0,0646 & 29,4 & 0,012\,\% & 6,7 & 0,618 & 1 ms \\
-Modèle final, 12 tours & 0,0632 & 28,3 & 0,002\,\% & 5,3 & 0,625 & 2 ms \\
-\textbf{12 tours + affinage} & \textbf{0,0615} & \textbf{27,9} & \textbf{0\,\%} & \textbf{0,05} & \textbf{0,647} & 18 ms \\
+Modèle final, 12 tours & 0,0625 & 27,9 & 0,001\,\% & 6,0 & 0,631 & 2 ms \\
+\textbf{12 tours + affinage} & \textbf{0,0610} & \textbf{27,4} & \textbf{0\,\%} & \textbf{0,09} & \textbf{0,657} & 17 ms \\
 \bottomrule
 \end{tabular}
 
@@ -527,7 +526,7 @@ Modèle final, 12 tours & 0,0632 & 28,3 & 0,002\,\% & 5,3 & 0,625 & 2 ms \\
 \begin{itemize}
 \setlength{\itemsep}{1pt}
 \item \textbf{Meilleur sur les cinq critères à la fois} : plus de compromis entre le stress et le reste.
-\item Le deuxième axe du sujet (optimisation directe), \textbf{parti du dessin du modèle} : quelques pas suffisent.
+\item Le deuxième axe du sujet (optimisation directe), \textbf{parti du dessin du modèle} : quelques pas suffisent. Stress à l'échelle optimale, comme le benchmark et CoRe-GD.
 \end{itemize}
 \end{minipage}
 
@@ -561,7 +560,7 @@ Stress / croisements / nœuds superposés & 0,065 / 30,5 / 0,06\,\% & \textbf{0,
 \begin{frame}{Suite}
 \begin{enumerate}
 \setlength{\itemsep}{7pt}
-\item Réduire le stress restant (0,065 contre 0,059 pour CoRe-GD) : entraînements plus longs, mémoire de rejeu de CoRe-GD
+\item Réduire le stress restant (0,062 contre 0,059 pour CoRe-GD) : mémoire de rejeu de CoRe-GD, entraînement sur le stress à l'échelle optimale dès la phase 1
 \item Déplier les dessins, souvent repliés : la structure du graphe n'est vue que localement. Piste : des convolutions sur des voisinages plus larges que les voisins directs (2 ou 3 sauts)
 \item Stabiliser l'entraînement, dont la validation varie beaucoup d'une epoch à l'autre
 \item Répéter chaque réglage avec plusieurs graines, pour confirmer les petits écarts
