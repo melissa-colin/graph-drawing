@@ -1,38 +1,57 @@
-
 import math
 import torch
 
 from data.input import GraphInput
 from data.output import Layout
+from metrics.batching import node_graph, per_graph
 
-EPS = 1e-8
 
 def edge_angles(layout: Layout, graph: GraphInput) -> torch.Tensor:
+    """Angular resolution, as a loss: mean over the nodes of degree >= 2 of 1 - theta_min(v) / theta_ideal(v).
+
+    theta_min(v): smallest angle between two consecutive edges around v.
+    theta_ideal(v) = 2 pi / deg(v): the edges evenly spread around v.
+    In [0, 1]: 0 when every node has evenly spread edges. 1 - this value is the minimum angle metric
+    of Purchase (2002), as used in the graph drawing literature.
+    graph can be a PyG batch: mean over the nodes of each graph, then mean over the graphs.
+
+    Correction : l'ancienne version prenait le plus petit angle de TOUT le graphe, comparé à 2 pi / degré max.
+    Un seul couple d'arêtes recevait un gradient, et un nœud de degré 2 était jugé avec l'angle idéal du
+    nœud de plus haut degré. Ici, chaque nœud a son propre angle idéal et contribue à la moyenne.
+    Calcul : on trie les arêtes de chaque nœud par direction, les angles entre arêtes voisines sont les
+    écarts entre directions consécutives (O(E log E), au lieu de la matrice E x E de toutes les paires).
+    """
     pos = layout.positions
-    # edge in every direction
-    start_nodes, end_nodes = graph.edge_index_bidirectional.to(pos.device)
+    src, dst = graph.edge_index_bidirectional.to(pos.device)  # each edge seen from both ends
+    n = pos.shape[0]
+    two_pi = 2 * math.pi
+    node_graph_index, num_graphs = node_graph(graph, pos.device)
+    degree = torch.bincount(src, minlength=n)
+    has_angle = degree >= 2
 
-    # edge from the same node
-    same_node = (start_nodes[:, None] == start_nodes[None, :]).triu(diagonal=1)
-    a, b = same_node.nonzero(as_tuple=True)
+    # direction of each edge leaving its node; a zero-length edge has no direction: no gradient through it
+    vec = pos[dst] - pos[src]
+    valid = vec.detach().norm(dim=1) > 1e-6
+    vec = torch.where(valid[:, None], vec, vec.new_tensor([1.0, 0.0]))
+    angle = torch.atan2(vec[:, 1], vec[:, 0])  # in [-pi, pi]
 
-    # all nodes of degree 1
-    if a.numel() == 0:
-        return torch.zeros((), device=pos.device, dtype=pos.dtype)
+    # sort by node, then by direction: two stable sorts (exact, unlike a combined float key)
+    order = torch.argsort(angle.detach())
+    order = order[torch.argsort(src[order], stable=True)]
+    node, angle = src[order], angle[order]
 
-    # compute angles
-    # a . b = ||a|| * ||b|| * cos(ab) & C = ||a|| ||b|| sinf(ab) => cross/dot = tan
-    vec = pos[end_nodes] - pos[start_nodes]
-    cross = vec[a, 0] * vec[b, 1] - vec[a, 1] * vec[b, 0]
-    dot = (vec[a] * vec[b]).sum(dim=1)
-    theta = torch.atan2(cross.abs()  + EPS, dot)
+    # next edge around the same node; the last one wraps to the first one (+ 2 pi)
+    first = torch.cumsum(degree, 0) - degree  # index of the first edge of each node in the sorted list
+    rank = torch.arange(node.numel(), device=pos.device)
+    is_last = rank == first[node] + degree[node] - 1
+    following = torch.where(is_last, first[node], rank + 1)
+    gap = angle[following] - angle + is_last.to(pos.dtype) * two_pi
 
-    # compute degrees
-    degrees = torch.bincount(start_nodes)
-    d_max = degrees.max().to(dtype=pos.dtype)
-    theta_g = 2 * math.pi / d_max
+    theta_min = pos.new_full((n,), two_pi).scatter_reduce(0, node, gap, reduce="amin", include_self=False)
+    theta_ideal = two_pi / degree.clamp(min=1).to(pos.dtype)
+    per_node = torch.where(has_angle, 1.0 - theta_min / theta_ideal, torch.zeros_like(theta_min))
 
-    if theta.numel() == 0:
-        return pos.new_tensor(0.0)
-    
-    return 1.0 - theta.min() / theta_g
+    # mean over the nodes of degree >= 2 of each graph (0 for a graph without any), then over the graphs
+    total = per_graph(per_node, node_graph_index, num_graphs, "sum")
+    count = per_graph(has_angle.to(pos.dtype), node_graph_index, num_graphs, "sum")
+    return (total / count.clamp_min(1)).mean() + pos.sum() * 0.0  # + 0 linked to pos: backward always works

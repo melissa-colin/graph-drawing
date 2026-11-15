@@ -45,7 +45,8 @@ def test_model():
             if param.grad is not None:
                 check_finite(f"gradient {name}", param.grad)
         optimizer.step()
-        print(f"Etape {step:02d} | loss = {loss.item():.6f} | metriques = {values}")
+        metriques = {name: round(float(value), 4) for name, value in values.items()}
+        print(f"Etape {step:02d} | loss = {loss.item():.6f} | metriques = {metriques}")
 
 
 def test_free_positions():

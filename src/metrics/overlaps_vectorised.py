@@ -1,4 +1,7 @@
-"""Versions vectorisées de node_overlaps et edge_overlaps (NON TESTÉES : à comparer à l'ancienne boucle).
+"""Versions vectorisées de node_overlaps et edge_overlaps.
+
+Testées : mêmes valeurs qu'une somme pixel par pixel sur toute l'image (à 0,1 % près pour les nœuds, la
+différence venant des queues de sigmoïde coupées à 1 %), voir les tests dans le message de commit.
 
 Principe : au lieu d'une boucle Python avec une grille par paire (4 .item() = 4 synchronisations
 GPU->CPU par paire, et des milliers de petits noeuds dans le graphe autograd), on calcule la boîte de
@@ -9,11 +12,15 @@ que des opérations élément par élément, et n'utilisent des centres/extrémi
 a[0], a[1], b[0], b[1]. Ici, on leur passe des tuples (cx, cy) de tenseurs de forme (k, 1, 1).
 Si elles font autre chose (stack, indexation de pos...), il faut adapter les deux lambdas `cov`.
 
-Architecture : batched_overlap, _boxes et _segment_distance peuvent aller dans metrics_helpers.py.
+graph peut être un batch PyG : seules les paires d'un même graphe comptent, et le résultat est la moyenne
+sur les graphes de la somme par graphe (voir metrics/batching.py).
+
+Architecture : batched_overlap, _boxes et _clip_to_strip peuvent aller dans metrics_helpers.py.
 """
 import torch
 
 from data.raster.sdf import node_coverage_torch, edge_coverage_torch, coverage_margin
+from metrics.batching import node_graph, edge_width
 
 
 def _col(t):
@@ -39,7 +46,7 @@ def batched_overlap(x0, y0, x1, y1, coverage_i, coverage_j, like, max_cells=2_00
     dont le tenseur ne dépasse pas max_cells cases, pour limiter le remplissage inutile et la mémoire.
     """
     K = x0.numel()
-    total = like.new_zeros(())
+    total = like.sum() * 0.0  # zéro relié aux positions : backward() marche même sans aucune paire
     if K == 0:
         return total
 
@@ -76,9 +83,13 @@ def node_overlaps(layout, graph, softness=0.5):
     r = graph.node_size.to(device=pos.device, dtype=pos.dtype)  # (N,)
     H, W = layout.height, layout.width
     margin = coverage_margin(softness)
+    node_graph_index, num_graphs = node_graph(graph, pos.device)
 
     with torch.no_grad():  # sélection des paires et des boîtes : sans gradient, comme avant
-        close = torch.triu(torch.cdist(pos, pos) < r[:, None] + r[None, :] + margin, diagonal=1)
+        same_graph = node_graph_index[:, None] == node_graph_index[None, :]
+        # chaque couverture déborde de `margin` au-delà du rayon : le produit peut être non nul jusqu'à
+        # r_i + r_j + 2 margin (l'ancien filtre, à 1 margin, ratait ces queues)
+        close = torch.triu((torch.cdist(pos, pos) < r[:, None] + r[None, :] + 2 * margin) & same_graph, diagonal=1)
         i, j = close.nonzero(as_tuple=True)
         lo = torch.maximum(pos[i] - r[i, None], pos[j] - r[j, None]) - margin
         hi = torch.minimum(pos[i] + r[i, None], pos[j] + r[j, None]) + margin
@@ -91,67 +102,70 @@ def node_overlaps(layout, graph, softness=0.5):
         return lambda X, Y, idx: node_coverage_torch(
             X, Y, (_col(p[idx, 0]), _col(p[idx, 1])), _col(rad[idx]), softness)
 
-    return batched_overlap(x0, y0, x1, y1, cov(pi, ri), cov(pj, rj), pos)
+    return batched_overlap(x0, y0, x1, y1, cov(pi, ri), cov(pj, rj), pos) / num_graphs
 
 
 # --------------------------------------------------------------------------------------------
 # Arêtes
 # --------------------------------------------------------------------------------------------
-def _cross2(a, b):
-    return a[..., 0] * b[..., 1] - a[..., 1] * b[..., 0]
-
-
-def _point_segment_distance(p, a, b):
+def _clip_to_strip(p0, p1, a, b, half_width):
+    """Partie du segment [p0, p1] à distance <= half_width de la droite (a, b).
+    Retourne les extrémités (q0, q1) de cette partie et un masque `nonempty`. Tous de forme (K, 2) / (K,)."""
     ab = b - a
-    t = (((p - a) * ab).sum(-1) / (ab * ab).sum(-1).clamp_min(1e-12)).clamp(0, 1)
-    return (p - (a + t[:, None] * ab)).norm(dim=-1)
-
-
-def _segment_distance(a, b, c, d):
-    """Distance entre les segments [a,b] et [c,d] : 0 s'ils se croisent, sinon le plus petit des
-    4 écarts extrémité-segment."""
-    d1, d2 = _cross2(b - a, c - a), _cross2(b - a, d - a)
-    d3, d4 = _cross2(d - c, a - c), _cross2(d - c, b - c)
-    cross = (d1 * d2 < 0) & (d3 * d4 < 0)
-    dist = torch.minimum(
-        torch.minimum(_point_segment_distance(a, c, d), _point_segment_distance(b, c, d)),
-        torch.minimum(_point_segment_distance(c, a, b), _point_segment_distance(d, a, b)),
-    )
-    return torch.where(cross, torch.zeros_like(dist), dist)
+    normal = torch.stack((-ab[:, 1], ab[:, 0]), dim=1) / ab.norm(dim=1, keepdim=True).clamp_min(1e-12)
+    s0 = ((p0 - a) * normal).sum(1)  # distance signée de p0 à la droite
+    ds = ((p1 - p0) * normal).sum(1)  # variation de cette distance le long du segment
+    parallel = ds.abs() < 1e-9
+    safe = torch.where(parallel, torch.ones_like(ds), ds)
+    t1, t2 = (-half_width - s0) / safe, (half_width - s0) / safe
+    lo = torch.where(parallel, torch.zeros_like(ds), torch.minimum(t1, t2)).clamp(min=0)
+    hi = torch.where(parallel, torch.ones_like(ds), torch.maximum(t1, t2)).clamp(max=1)
+    nonempty = (lo <= hi) & (~parallel | (s0.abs() <= half_width))
+    seg = p1 - p0
+    return p0 + lo[:, None] * seg, p0 + hi[:, None] * seg, nonempty
 
 
 def edge_overlaps(layout, graph, softness=0.5):
     pos = layout.positions  # (N, 2)
     u, v = graph.edge_index.to(pos.device)  # (E,), (E,)
-    w = float(graph.edge_width)
     H, W = layout.height, layout.width
     margin = coverage_margin(softness)
+    node_graph_index, num_graphs = node_graph(graph, pos.device)
+    edge_graph = node_graph_index[u]
+    w = edge_width(graph, edge_graph, pos)  # (E,) : un float par graphe, répété sur ses arêtes
 
     pu, pv = pos[u], pos[v]  # avec gradient (extrémités de chaque arête)
 
     with torch.no_grad():
-        box_min = torch.minimum(pu, pv) - w / 2
-        box_max = torch.maximum(pu, pv) + w / 2
+        box_min = torch.minimum(pu, pv) - w[:, None] / 2
+        box_max = torch.maximum(pu, pv) + w[:, None] / 2
 
-        # filtre grossier : boîtes qui se touchent, sans sommet commun (comme avant)
-        touch = ((box_min[:, None] - margin < box_max[None, :])
-                 & (box_min[None, :] - margin < box_max[:, None])).all(dim=-1)
+        # filtre grossier : boîtes qui se touchent, sans sommet commun. Chaque couverture déborde de
+        # `margin`, donc deux boîtes peuvent être séparées de 2 margin et se recouvrir quand même.
+        touch = ((box_min[:, None] - 2 * margin < box_max[None, :])
+                 & (box_min[None, :] - 2 * margin < box_max[:, None])).all(dim=-1)
         share = ((u[:, None] == u[None, :]) | (u[:, None] == v[None, :])
                  | (v[:, None] == u[None, :]) | (v[:, None] == v[None, :]))
-        i, j = torch.triu(touch & ~share, diagonal=1).nonzero(as_tuple=True)
+        same_graph = edge_graph[:, None] == edge_graph[None, :]
+        i, j = torch.triu(touch & ~share & same_graph, diagonal=1).nonzero(as_tuple=True)
 
-        # filtre exact : la couverture est nulle au-delà de w/2 + margin de chaque segment,
-        # donc le produit est nul si les segments sont à plus de w + 2*margin l'un de l'autre.
-        keep = _segment_distance(pu[i], pv[i], pu[j], pv[j]) < w + 2 * margin
-        i, j = i[keep], j[keep]
-
-        lo = torch.maximum(box_min[i], box_min[j]) - margin
-        hi = torch.minimum(box_max[i], box_max[j]) + margin
+        # Boîte serrée (optimisation) : la couverture d'une arête est nulle au-delà de rho = w/2 + margin
+        # du segment. Un pixel couvert par les deux arêtes est donc à moins de rho_i d'un point de i qui est
+        # lui-même à moins de rho_i + rho_j de la droite de j : on coupe i à la bande de cette demi-largeur
+        # autour de j (et inversement), et la boîte est l'intersection des deux morceaux agrandis de rho. Pour deux
+        # arêtes qui se croisent, elle se réduit au voisinage du croisement (quelques dizaines de pixels),
+        # au lieu de l'intersection des boîtes englobantes (souvent des dizaines de milliers de pixels).
+        rho_i, rho_j = w[i] / 2 + margin, w[j] / 2 + margin  # portée de chaque couverture
+        ai, bi, ok_i = _clip_to_strip(pu[i], pv[i], pu[j], pv[j], rho_i + rho_j)
+        aj, bj, ok_j = _clip_to_strip(pu[j], pv[j], pu[i], pv[i], rho_i + rho_j)
+        lo = torch.maximum(torch.minimum(ai, bi) - rho_i[:, None], torch.minimum(aj, bj) - rho_j[:, None])
+        hi = torch.minimum(torch.maximum(ai, bi) + rho_i[:, None], torch.maximum(aj, bj) + rho_j[:, None])
         x0, y0, x1, y1, keep = _boxes(lo, hi, W, H)
+        keep = keep & ok_i & ok_j
     i, j, x0, y0, x1, y1 = (t[keep] for t in (i, j, x0, y0, x1, y1))
 
-    def cov(a, b):
+    def cov(a, b, width):
         return lambda X, Y, idx: edge_coverage_torch(
-            X, Y, (_col(a[idx, 0]), _col(a[idx, 1])), (_col(b[idx, 0]), _col(b[idx, 1])), w, softness)
+            X, Y, (_col(a[idx, 0]), _col(a[idx, 1])), (_col(b[idx, 0]), _col(b[idx, 1])), _col(width[idx]), softness)
 
-    return batched_overlap(x0, y0, x1, y1, cov(pu[i], pv[i]), cov(pu[j], pv[j]), pos)
+    return batched_overlap(x0, y0, x1, y1, cov(pu[i], pv[i], w[i]), cov(pu[j], pv[j], w[j]), pos) / num_graphs
