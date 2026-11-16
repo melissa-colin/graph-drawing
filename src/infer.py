@@ -8,7 +8,7 @@ from data.output import Layout, save_png, save_positions
 from loss import Loss
 from model import LayoutModel
 from refine import ROUNDS, STEPS, draw
-from train import PHASE_2_WEIGHTS
+from train import REFINE_WEIGHTS
 
 
 def load_model(model_path: Path) -> LayoutModel:
@@ -29,10 +29,10 @@ def load_model(model_path: Path) -> LayoutModel:
 
 def infer(model_path: Path, graphml_path: Path, rounds: int = ROUNDS, steps: int = STEPS) -> tuple[Layout, GraphInput]:
     """Draw a graph: the model with `rounds` rounds, then `steps` refinement steps on the positions with the
-    phase-2 training loss (see refine.py; steps = 0 for the model alone)."""
+    refinement loss of train.REFINE_WEIGHTS (see refine.py; steps = 0 for the model alone)."""
     graph = load_graphml(graphml_path, node_size=4.0)
     model = load_model(model_path)
-    return draw(model, graph, Loss(weights=PHASE_2_WEIGHTS), rounds, steps), graph
+    return draw(model, graph, Loss(weights=REFINE_WEIGHTS), rounds, steps), graph
 
 
 if __name__ == "__main__":

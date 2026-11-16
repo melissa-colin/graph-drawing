@@ -200,11 +200,15 @@ def main(
 # screen_fill stays at 0: the pixel-scaled stress already fills the frame, and screen_fill only pulls on
 # the nodes at the border of the drawing, which stretched the drawings.
 PHASE_1_WEIGHTS = {"stress": 1}
-# The phase-2 stress is the scale-normalized one (shape only, at the best scale: what the benchmark
-# measures, and what CoRe-GD trains on): in phase 1 the pixel-scaled stress has already set the size of
-# the drawing. On the validation split, with refinement, vs the same recipe with the pixel-scaled stress:
-# stress 0.0610 vs 0.0615, crossings 27.4 vs 27.9, angles 0.657 vs 0.647, others unchanged.
+# Phase 2 uses BOTH stresses. The scale-normalized one (shape only, at the best scale: what the benchmark
+# measures, and what CoRe-GD trains on) improves the shape; the pixel-scaled one keeps the size. With the
+# scale-normalized stress alone, the drawings shrank by 24 % (nothing held the size, and the crossing cost,
+# in pixels, decreases when the drawing shrinks): the shape metrics improved, the drawings got cramped.
+# Validation, with refinement (REFINE_WEIGHTS), vs phase 2 with the pixel-scaled stress alone: stress
+# 0.0609 vs 0.0615, edges over nodes 0.04 vs 0.07, angles 0.651 vs 0.647, crossings 28.2 vs 27.9, same size
+# (460 px, nearest node 45 px).
 PHASE_2_WEIGHTS = {
+    "stress": 1,
     "scaled_stress": 1,
     "screen_fill": 0,
     "node_overlaps": 0.334,
@@ -213,6 +217,10 @@ PHASE_2_WEIGHTS = {
     "edge_crossings": 0.0131,
     "edge_node_overlaps": 0.0646,
 }
+# Loss of the refinement after the model (refine.py): the same, but with the pixel-scaled stress only.
+# Validation, on the phase-2 model: with both stresses the stress is a bit lower (0.0604 vs 0.0609), but
+# edges over nodes (0.12 vs 0.04) and angles (0.643 vs 0.651) get worse.
+REFINE_WEIGHTS = {name: weight for name, weight in PHASE_2_WEIGHTS.items() if name != "scaled_stress"}
 
 if __name__ == "__main__":
     data_dir = Path("data/rome")
