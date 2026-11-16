@@ -3,13 +3,15 @@
 Our split (src/data/input.split_dataset) is the one of CoRe-GD and DeepGD: no learned model saw these graphs.
 DeepGD and CoRe-GD use the pretrained Rome checkpoints shipped with the CoRe-GD repo.
 For each method: quality (scale-normalized stress, Ahmed et al. 2026, divided by the number of pairs; edge
-crossings; share of overlapping node pairs) and cost (parameters, time and peak GPU memory per graph).
+crossings; share of overlapping node pairs), size (largest side of the drawing; median distance from a node
+to its nearest node, in the 500 x 500 frame) and cost (parameters, time and peak GPU memory per graph).
 Also renders the drawings of the five methods on the same three graphs (30, 60 and 100 nodes) with our
 rasterizer, in the 500 x 500 frame, and assembles them in one sheet.
 
 Setup once:  bash benchmark/setup_baselines.sh
 Run from the project root:  python benchmark/compare.py runs/model.pt
-Outputs in benchmark/out/: results.md (table), renders/ (one 500 x 500 PNG per method and graph), sheet.png
+Also the quality measures of (GD)^2 (src/metrics/evaluation.py), to compare with the literature.
+Outputs in benchmark/out/: results.md (tables), positions.pt (all drawings), renders/ (one 500 x 500 PNG per method and graph), sheet.png
 """
 import json, random, sys, time, types
 from pathlib import Path
@@ -80,9 +82,10 @@ cfg = ours.config
 print("our checkpoint:", CHECKPOINT, "| head:", cfg["head"],
       "| loss weights:", torch.load(CHECKPOINT, map_location="cpu").get("loss_weights", "not recorded"))
 from loss import Loss
+from metrics.evaluation import MEASURES
 from refine import ROUNDS, STEPS, draw
-from train import PHASE_2_WEIGHTS
-refine_loss = Loss(weights=PHASE_2_WEIGHTS)
+from train import REFINE_WEIGHTS
+refine_loss = Loss(weights=REFINE_WEIGHTS)
 def ours_pos(g, steps=0):
     """Our model with ROUNDS rounds, then `steps` refinement steps on the positions (src/refine.py)."""
     h = g.clone()
@@ -153,24 +156,37 @@ params = {"Aléatoire": 0, "Kamada-Kawai": 0, "Notre modèle": sum(p.numel() for
 for k, f in methods[1:]:  # warm-up: first CUDA calls are slow
     f(graphs[0])
 res = {k: [] for k, _ in methods}
+literature = {k: [] for k, _ in methods}  # (GD)^2 quality measures, src/metrics/evaluation.py
 cost = {k: [] for k, _ in methods}
 positions = {k: {} for k, _ in methods}
 for g in graphs:
     for k, f in methods:
         P, seconds, memory = timed(f, g)
         positions[k][g.name] = P
-        res[k].append((stress(P, g), overlaps(P), crossings(P, g)))
+        D = torch.cdist(P.float(), P.float()); D.fill_diagonal_(float("inf"))
+        # size checks: the stress is scale-free, so a drawing can shrink without any quality metric noticing
+        span = float((P.max(0).values - P.min(0).values).max())
+        nearest = float(D.min(1).values.median())
+        res[k].append((stress(P, g), overlaps(P), crossings(P, g), span, nearest))
+        literature[k].append([f(P.double().cpu(), g.cpu()) for f, _ in MEASURES.values()])
         cost[k].append((seconds, memory))
 OUT.mkdir(exist_ok=True)
 baseline_memory = min(np.nanmin([c[1] for c in cost[k]]) for k in cost)  # weights already loaded on the GPU
 lines = [f"Test graphs: {len(graphs)} (Rome, split shared with CoRe-GD and DeepGD) | device: {dev} | ours: {CHECKPOINT}", "",
-         "| method | stress | crossings | overlapping nodes | parameters | time / graph | peak GPU memory |",
-         "|---|---|---|---|---|---|---|"]
+         "| method | stress | crossings | overlapping nodes | drawing size | nearest node | parameters | time / graph | peak GPU memory |",
+         "|---|---|---|---|---|---|---|---|---|"]
 for k, v in res.items():
     memory = np.nanmax([c[1] for c in cost[k]]) - baseline_memory
     lines.append(f"| {k} | {np.mean([x[0] for x in v]):.3f} | {np.mean([x[2] for x in v]):.1f} | "
-                 f"{100 * np.mean([x[1] for x in v]):.2f} % | {params[k]:,} | {1000 * np.mean([c[0] for c in cost[k]]):.1f} ms | "
+                 f"{100 * np.mean([x[1] for x in v]):.2f} % | {np.mean([x[3] for x in v]):.0f} px | "
+                 f"{np.mean([x[4] for x in v]):.1f} px | {params[k]:,} | {1000 * np.mean([c[0] for c in cost[k]]):.1f} ms | "
                  f"{memory:.0f} MiB |")
+lines += ["", "Quality measures of (GD)^2 (Ahmed et al. 2020), also used by DeepGD and SmartGD (arrow: better direction):", "",
+          "| method | " + " | ".join(f"{name} {'↑' if up else '↓'}" for name, (_, up) in MEASURES.items()) + " |",
+          "|---|" + "---|" * len(MEASURES)]
+for k, v in literature.items():
+    lines.append(f"| {k} | " + " | ".join(f"{np.mean([x[c] for x in v]):.3f}" for c in range(len(MEASURES))) + " |")
+torch.save({k: {name: P.cpu() for name, P in pos.items()} for k, pos in positions.items()}, OUT / "positions.pt")
 (OUT / "results.md").write_text("\n".join(lines) + "\n")
 print("\n".join(lines))
 
