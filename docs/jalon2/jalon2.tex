@@ -47,15 +47,17 @@
 \begin{frame}{Plan}
 \begin{enumerate}
 \setlength{\itemsep}{6pt}
-\item Le sujet en une slide
-\item Un rapide état de l'art
-\item Les données et leur prétraitement
-\item Notre idée générale
-\item Premiers choix techniques : l'architecture, la loss
-\item Premiers résultats
-\item Idées pour la suite
+\item Contexte : le sujet, un rapide état de l'art
+\item Données et prétraitement
+\item Méthode : l'idée, l'architecture, la loss
+\item Résultats : comparaison et ablation
+\item Optimisation : la tête séparable
+\item Pour la suite
 \end{enumerate}
 \end{frame}
+
+%---------------------------------------------------------------------
+\section{Contexte}
 
 %---------------------------------------------------------------------
 \begin{frame}{Le sujet}
@@ -93,6 +95,9 @@ CoRe-GD (ICLR 2024) & un GNN récurrent qui se recâble selon son propre dessin 
 \end{frame}
 
 %---------------------------------------------------------------------
+\section{Données et prétraitement}
+
+%---------------------------------------------------------------------
 \begin{frame}{Les données}
 \begin{block}{Base Rome}
 \small 11\,534 graphes de 10 à 110 nœuds.\\
@@ -124,6 +129,9 @@ Même découpage que CoRe-GD et DeepGD : 10\,000 entraînement, 1\,000 test, 531
 \end{itemize}
 \end{minipage}
 \end{frame}
+
+%---------------------------------------------------------------------
+\section{Méthode}
 
 %---------------------------------------------------------------------
 \begin{frame}{Notre idée : un réseau qui place les nœuds directement en pixels}
@@ -164,11 +172,13 @@ Même découpage que CoRe-GD et DeepGD : 10\,000 entraînement, 1\,000 test, 531
   \node[carte,right=of mp] (br) {\textbf{Dessin provisoire}\\\scriptsize par la soft-argmax};
   \node[carte,right=of br] (knn) {\textbf{Messages}\\\scriptsize entre voisins\\[-2pt]\scriptsize dans le dessin};
   \node[carte,right=0.55cm of knn,fill=bleuclair,draw=bleu] (sa) {\textbf{Soft-argmax}\\\scriptsize positions en pixels};
+  \node[carte,right=0.55cm of sa,fill=orangeclair,draw=orange,dashed] (af) {\textbf{Affinage}\\\scriptsize optionnel :\\[-2pt]\scriptsize 25 pas d'Adam\\[-2pt]\scriptsize sur les positions};
   \node[draw=bleu,dashed,rounded corners=6pt,fit=(mp)(br)(knn),inner sep=7pt,label={[font=\scriptsize,bleu]above:répété environ 5 fois}] (boucle) {};
   \draw[fleche] (enc) -- (boucle);
   \draw[fleche] (mp) -- (br);
   \draw[fleche] (br) -- (knn);
   \draw[fleche] (boucle) -- (sa);
+  \draw[fleche,dashed,orange] (sa) -- (af);
 \end{tikzpicture}}
 
 \vspace{0.4cm}
@@ -178,6 +188,7 @@ Même découpage que CoRe-GD et DeepGD : 10\,000 entraînement, 1\,000 test, 531
 \item \textbf{Dessin provisoire} : à chaque tour, la tête soft-argmax place les nœuds à partir de leur état actuel. Ce dessin sert seulement à trouver les 8 nœuds les plus proches de chacun.
 \item \textbf{Messages entre voisins dans le dessin} (repris de CoRe-GD) : deux nœuds proches à l'écran mais loin dans le graphe se voient, et peuvent apprendre à s'écarter.
 \item \textbf{Lien avec la loss} : les métriques sont calculées sur les positions finales seulement ; leur gradient remonte par la soft-argmax et les messages jusqu'aux poids.
+\item \textbf{Affinage (optionnel)} : après le modèle, quelques pas de descente de gradient sur les positions elles-mêmes, pour retirer les petits défauts (voir les résultats).
 \end{itemize}
 \end{frame}
 
@@ -420,6 +431,73 @@ Dessins provisoires d'un graphe de 41 nœuds jamais vu à l'entraînement.
 \end{frame}
 
 %---------------------------------------------------------------------
+\begin{frame}{La loss finale : trois étapes, trois dosages}
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[node distance=0.5cm,etape/.style={carte,text width=4.2cm,minimum height=3.3cm,align=left}]
+  \node[etape,fill=bleuclair,draw=bleu] (p1) {\textbf{1. Entraînement}\\[2pt]
+    \scriptsize 30 epochs, lr $2\cdot10^{-4}$\\[4pt]
+    \footnotesize\textbf{Stress en pixels seul}\\[4pt]
+    \scriptsize\textcolor{gris}{Pourquoi : le stress donne la structure globale. Tout mélanger dès le départ échoue (stress $\times 3$, croisements $\times 2{,}4$).}};
+  \node[etape,right=of p1] (p2) {\textbf{2. Fine-tuning}\\[2pt]
+    \scriptsize 8 epochs, lr $10^{-4}$\\[4pt]
+    \footnotesize\textbf{Stress en pixels + stress à l'échelle optimale + métriques écran} (3\,\% chacune)\\[4pt]
+    \scriptsize\textcolor{gris}{Pourquoi : corriger les défauts locaux sans casser la structure.}};
+  \node[etape,right=of p2,fill=orangeclair,draw=orange,dashed] (p3) {\textbf{3. Affinage} \scriptsize(optionnel)\\[2pt]
+    \scriptsize par dessin, 25 pas d'Adam\\[4pt]
+    \footnotesize\textbf{Stress en pixels + métriques écran}\\[4pt]
+    \scriptsize\textcolor{gris}{Pourquoi : retirer les derniers défauts de la taille d'un nœud, sans réentraîner.}};
+  \draw[fleche] (p1) -- (p2); \draw[fleche] (p2) -- (p3);
+\end{tikzpicture}}
+
+\vspace{0.3cm}
+\begin{minipage}{0.94\textwidth}
+\footnotesize
+\begin{itemize}
+\setlength{\itemsep}{2pt}
+\item \textbf{Deux stress au fine-tuning} : avec le stress à l'échelle optimale seul, les dessins rétrécissaient de 24\,\% (rien ne fixe la taille, et un petit dessin a des défauts plus petits en pixels). Le stress en pixels fixe la taille.
+\item \textbf{Poids choisis sur la validation} : 3\,\% est le plus fort dosage qui coûte moins de 5\,\% de stress.
+\end{itemize}
+\end{minipage}
+\end{frame}
+
+%---------------------------------------------------------------------
+\begin{frame}{La loss finale : les coefficients}
+\centering
+\scriptsize
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{0.95}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\textbf{Terme} & \textbf{1. Entraînement} & \textbf{2. Fine-tuning} & \textbf{3. Affinage} & \textbf{Poids équilibré} \\
+\midrule
+Stress en pixels & 1 & 1 & 1 & -- \\
+Stress à l'échelle optimale & 0 & 1 & 0 & -- \\
+Nœuds superposés & 0 & 0,334 & 0,334 & 11,1 \\
+Arêtes superposées & 0 & 0,0518 & 0,0518 & 1,73 \\
+Angles entre arêtes & 0 & 10,6 & 10,6 & 353 \\
+Croisements & 0 & 0,0131 & 0,0131 & 0,437 \\
+Arête sur un nœud & 0 & 0,0646 & 0,0646 & 2,15 \\
+\bottomrule
+\end{tabular}
+
+\vspace{0.15cm}
+\begin{minipage}{0.94\textwidth}
+\footnotesize
+\begin{itemize}
+\setlength{\itemsep}{1pt}
+\item \textbf{Poids équilibré} = 1 / valeur moyenne du terme sur les dessins de l'étape 1 (\emph{Adaptive Weight} de DeepGD) : avec ce poids, chaque terme pèserait autant que le stress.
+\item \textbf{Coefficient = 3\,\% du poids équilibré}, donc chaque métrique écran pèse environ 3\,\% du stress. Les écarts entre coefficients (0,013 à 10,6) viennent seulement des unités : un angle vaut moins de 1, un croisement se compte en pixels.
+\item \textbf{Pourquoi 3\,\%} : le plus fort dosage qui coûte moins de 5\,\% de stress sur la validation (essayés : 3, 5, 10, 30, 100\,\%).
+\item \textbf{Remplissage de l'écran retiré} : il étirait les dessins, et le stress en pixels remplit déjà le cadre.
+\end{itemize}
+\end{minipage}
+\end{frame}
+
+%---------------------------------------------------------------------
+\section{Résultats}
+
+%---------------------------------------------------------------------
 \begin{frame}{Premiers résultats : les dessins, rendus en pixels}
 \centering
 \includegraphics[height=0.74\textheight]{resultats.png}
@@ -496,74 +574,39 @@ CoRe-GD & \textbf{0,163} & 0,427 & 0,559 & 0,744 & 0,215 & \textbf{0,052} \\
 \end{frame}
 
 %---------------------------------------------------------------------
-\begin{frame}{Ce qu'apportent les métriques écran}
+\begin{frame}{Ablation : ce qu'apporte chaque étape}
 \centering
 \footnotesize
 \setlength{\tabcolsep}{5pt}
-\begin{tabular}{@{}lccccc@{}}
-\toprule
- & \textbf{Stress} & \textbf{Croise-} & \textbf{Nœuds} & \textbf{Arête sur} & \textbf{Angle} \\
- & $\downarrow$ & \textbf{ments} $\downarrow$ & \textbf{superposés} $\downarrow$ & \textbf{nœud} $\downarrow$ & \textbf{min.} $\uparrow$ \\
-\midrule
-Stress seul & \textbf{0,0629} & 30,7 & 0,028\,\% & 7,7 & 0,608 \\
-+ métriques écran (3\,\%) & 0,0653 & \textbf{29,0} & \textbf{0,010\,\%} & \textbf{6,5} & \textbf{0,615} \\
-\midrule
-Écart & +4\,\% & $-$5\,\% & $-$64\,\% & $-$15\,\% & + \\
-\bottomrule
-\end{tabular}
-
-\vspace{0.35cm}
-\begin{minipage}{0.92\textwidth}
-\small
-\begin{itemize}
-\setlength{\itemsep}{3pt}
-\item \textbf{Poids choisis sur la validation} parmi 8 essais : 3\,\% est le plus fort dosage qui coûte moins de 5\,\% de stress. À 10\,\%, 30\,\% ou 100\,\%, le stress se dégrade bien plus pour peu de gain.
-\item \textbf{Tout mélanger dès le départ échoue} : stress $\times 3$, croisements $\times 2{,}4$. Le stress donne la structure, les autres termes corrigent ensuite les défauts locaux.
-\item \textbf{Les angles aident à décroiser} : sans eux, les croisements ne baissent plus.
-\end{itemize}
-\end{minipage}
-
-\vspace{0.1cm}
-\scriptsize\textcolor{gris}{Les 1\,000 graphes de test, mesurés une seule fois. Les deux lignes partent du même modèle et ont le même nombre d'epochs d'affinage.}
-\end{frame}
-
-%---------------------------------------------------------------------
-\begin{frame}{Supprimer le compromis : affiner chaque dessin}
-\centering
-\begin{tikzpicture}[node distance=0.45cm]
-  \node[carte] (g) {\textbf{Graphe}};
-  \node[carte,right=of g,fill=bleuclair,draw=bleu] (m) {\textbf{Modèle}\\\scriptsize 12 tours au lieu de 5};
-  \node[carte,right=of m] (d) {\textbf{Dessin}\\\scriptsize déjà bon};
-  \node[carte,right=of d,fill=orangeclair,draw=orange] (r) {\textbf{25 pas d'Adam}\\\scriptsize sur les positions,\\[-2pt]\scriptsize mêmes métriques};
-  \node[carte,right=of r] (f) {\textbf{Dessin final}};
-  \draw[fleche] (g) -- (m); \draw[fleche] (m) -- (d); \draw[fleche] (d) -- (r); \draw[fleche] (r) -- (f);
-\end{tikzpicture}
-
-\vspace{0.3cm}
-\footnotesize
-\setlength{\tabcolsep}{5pt}
+\resizebox{0.95\textwidth}{!}{%
 \begin{tabular}{@{}lcccccc@{}}
 \toprule
  & \textbf{Stress} & \textbf{Croise-} & \textbf{Nœuds} & \textbf{Arête sur} & \textbf{Angle} & \textbf{Temps} \\
  & $\downarrow$ & \textbf{ments} $\downarrow$ & \textbf{superposés} $\downarrow$ & \textbf{nœud} $\downarrow$ & \textbf{min.} $\uparrow$ & \textbf{/ graphe} \\
 \midrule
-Modèle « stress seul » & 0,0621 & 30,9 & 0,026\,\% & 7,8 & 0,610 & 1 ms \\
-Modèle final, 12 tours & 0,0618 & 28,6 & 0,001\,\% & 4,9 & 0,627 & 2 ms \\
-\textbf{12 tours + affinage} & \textbf{0,0609} & \textbf{28,2} & \textbf{0\,\%} & \textbf{0,04} & \textbf{0,651} & 17 ms \\
+1. Entraînement seul (stress) & 0,0621 & 30,9 & 0,026\,\% & 7,8 & 0,610 & 1 ms \\
+1 + 2. avec le fine-tuning & 0,0618 & 28,6 & 0,001\,\% & 4,9 & 0,627 & 2 ms \\
+\textbf{1 + 2 + 3. avec l'affinage} & \textbf{0,0609} & \textbf{28,2} & \textbf{0\,\%} & \textbf{0,04} & \textbf{0,651} & 17 ms \\
+\midrule
+\multicolumn{7}{@{}l}{\scriptsize\textcolor{gris}{Variantes écartées}} \\
+Tout mélangé dès le départ$^*$ & 0,210 & 72,0 & 0,20\,\% & & & \\
+Fine-tuning à 10\,\%, avec angles & 0,0685 & 27,98 & 0,008\,\% & 6,19 & 0,625 & \\
+Fine-tuning à 10\,\%, sans angles & 0,0692 & 29,77 & 0,011\,\% & 6,46 & 0,613 & \\
+Fine-tuning, stress à l'échelle seul & \multicolumn{6}{l}{dessins réduits : 344 px au lieu de 454 ($-24$\,\%)} \\
 \bottomrule
-\end{tabular}
+\end{tabular}}
 
-\vspace{0.15cm}
+\vspace{0.3cm}
 \begin{minipage}{0.94\textwidth}
 \footnotesize
 \begin{itemize}
-\setlength{\itemsep}{1pt}
-\item \textbf{Meilleur sur les cinq critères à la fois} : plus de compromis entre le stress et le reste.
-\item Le deuxième axe du sujet (optimisation directe), \textbf{parti du dessin du modèle} : quelques pas suffisent.
+\setlength{\itemsep}{2pt}
+\item \textbf{Chaque étape améliore les cinq critères à la fois} : plus de compromis entre le stress et le reste.
+\item L'affinage est le deuxième axe du sujet (optimisation directe) : \textbf{quelques pas suffisent}.
 \end{itemize}
 \end{minipage}
 
-\scriptsize\textcolor{gris}{Validation (531 graphes), réglages choisis parmi 15 variantes. RTX 3060, batchs de 64 graphes.}
+\scriptsize\textcolor{gris}{Validation (531 graphes), modèle à 12 tours. RTX 3060, batchs de 64 graphes. $^*$ Sur le test (1\,000 graphes), toutes les métriques au poids équilibré.}
 \end{frame}
 
 %---------------------------------------------------------------------
@@ -584,7 +627,49 @@ Modèle final, 12 tours & 0,0618 & 28,6 & 0,001\,\% & 4,9 & 0,627 & 2 ms \\
 \end{frame}
 
 %---------------------------------------------------------------------
-\begin{frame}{Fait : une tête soft-argmax séparable}
+\begin{frame}{Essais : réduire l'écart de stress avec CoRe-GD}
+\centering
+\scriptsize
+\setlength{\tabcolsep}{5pt}
+\renewcommand{\arraystretch}{0.95}
+\begin{tabular}{@{}lccl@{}}
+\toprule
+\multicolumn{4}{@{}l}{\textbf{Chaîne complète} (entraînement, fine-tuning, affinage), moyenne sur 3 graines} \\
+ & \textbf{Stress} $\downarrow$ & \textbf{Croisements} $\downarrow$ & \\
+\midrule
+Recette actuelle & 0,0608 & \textbf{28,6} & 0,0605 à 0,0612 \\
++ mémoire de rejeu de CoRe-GD & \textbf{0,0606} & 28,9 & dans le bruit \\
+Config complète de CoRe-GD$^*$ (1 graine) & 0,0628 & 29,6 & moins bon \\
+\midrule
+\multicolumn{4}{@{}l}{\textbf{Entraînement seul}, 15 epochs} \\
+ & \textbf{Stress} $\downarrow$ & & \\
+\midrule
+Recette actuelle (3 graines) & 0,0642 & & 0,0621 à 0,0670 \\
++ balises de CoRe-GD (3 graines) & 0,0732 & & moins bon, instable \\
++ moyenne glissante des poids (3 graines) & 0,0647 & & instable \\
++ convolutions à 2 / 3 sauts (graine 0) & 0,0641 / 0,0696 & & moins bon \\
+\bottomrule
+\end{tabular}
+
+\vspace{0.15cm}
+\begin{minipage}{0.94\textwidth}
+\footnotesize
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\item \textbf{Aucun essai ne bat la recette actuelle} : on garde le modèle.
+\item \textbf{Le hasard pèse lourd} : selon la graine, le stress varie de 8\,\% après 15 epochs, de 1\,\% sur la chaîne complète.
+\item L'écart ne vient pas de l'entraînement de CoRe-GD. Piste : notre sortie en pixels.
+\end{itemize}
+\end{minipage}
+
+\scriptsize\textcolor{gris}{Validation (531 graphes). $^*$ Batchs de 32, 200 epochs, 8 pas de rejeu par batch, balises, son scheduler.}
+\end{frame}
+
+%---------------------------------------------------------------------
+\section{Optimisation}
+
+%---------------------------------------------------------------------
+\begin{frame}{Optimisation : une tête soft-argmax séparable}
 \small La position est la moyenne de la carte de probabilités : $x$ ne dépend que des totaux par colonne, $y$ que des totaux par ligne. On prédit donc directement ces deux totaux.
 
 \vspace{0.3cm}
@@ -607,14 +692,73 @@ Stress / croisements / nœuds superposés & 0,065 / 30,5 / 0,06\,\% & \textbf{0,
 \end{frame}
 
 %---------------------------------------------------------------------
-\begin{frame}{Suite}
-\begin{enumerate}
-\setlength{\itemsep}{7pt}
-\item Réduire le stress restant (0,062 contre 0,059 pour CoRe-GD) : mémoire de rejeu de CoRe-GD, entraînement sur le stress à l'échelle optimale dès la phase 1
-\item Déplier les dessins, souvent repliés : la structure du graphe n'est vue que localement. Piste : des convolutions sur des voisinages plus larges que les voisins directs (2 ou 3 sauts)
-\item Stabiliser l'entraînement, dont la validation varie beaucoup d'une epoch à l'autre
-\item Répéter chaque réglage avec plusieurs graines, pour confirmer les petits écarts
-\end{enumerate}
+\section{Pour la suite}
+
+%---------------------------------------------------------------------
+\begin{frame}{To-do list}
+\newcommand{\afaire}{\item[\textcolor{bleu}{\faSquare[regular]}]}
+\newcommand{\encours}{\item[\textcolor{orange}{\faMinusSquare[regular]}]}
+\newcommand{\fait}{\item[\textcolor{vert}{\faCheckSquare[regular]}]}
+\footnotesize
+\begin{columns}[T]
+\begin{column}{0.48\textwidth}
+\textbf{Évaluation}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\fait Même découpage de Rome que CoRe-GD
+\fait Plusieurs graines par réglage
+\afaire D'autres jeux de données
+\afaire Comparer à d'autres modèles récents
+\afaire Étude utilisateur sur la lisibilité
+\end{itemize}
+
+\vspace{2pt}
+\textbf{Modèle et loss}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\fait Recettes de CoRe-GD : sans gain
+\afaire Comprendre l'écart de stress restant
+\afaire Longueurs d'arêtes plus uniformes
+\afaire Déplier les dessins repliés
+\afaire Accélérer l'affinage d'un graphe seul
+\end{itemize}
+
+\vspace{10pt}
+\scriptsize\textcolor{gris}{\textcolor{vert}{\faCheckSquare[regular]} fait \quad \textcolor{orange}{\faMinusSquare[regular]} en cours \quad \textcolor{bleu}{\faSquare[regular]} à faire}
+
+\end{column}
+\begin{column}{0.48\textwidth}
+\textbf{Rendu à l'écran}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\afaire Arêtes courbes, qui contournent les nœuds
+\afaire Des couleurs pour les nœuds et les arêtes
+\afaire Une taille d'image variable
+\afaire Nœuds de tailles variées, étiquettes de texte
+\afaire Un modèle attentif aux arêtes
+\end{itemize}
+
+\vspace{2pt}
+\textbf{Grands graphes}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\afaire Tester bien au-delà de Rome (100 nœuds max.)
+\afaire Paires de stress tirées au hasard, image plus grande
+\end{itemize}
+
+
+\vspace{2pt}
+\textbf{Rendu du projet}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\afaire Démonstration
+\afaire Code nettoyé et documenté
+\end{itemize}
+
+\end{column}
+\end{columns}
+
+
 \end{frame}
 
 
@@ -674,4 +818,6 @@ La taille de l'image devient une entrée, plus un hyperparamètre.
 \end{tikzpicture}
 \end{frame}
 
+
+%---------------------------------------------------------------------
 \end{document}
