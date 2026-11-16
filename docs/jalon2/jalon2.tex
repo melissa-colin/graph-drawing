@@ -442,23 +442,56 @@ Dessins provisoires d'un graphe de 41 nœuds jamais vu à l'entraînement.
  & \textbf{normalisé} $\downarrow$ & \textbf{d'arêtes} $\downarrow$ & \textbf{superposés} $\downarrow$ && & \textbf{par graphe} & \textbf{GPU} \\
 \midrule
 Aléatoire & 0,420 & 630,9 & 0,08\,\% && -- & 0,1 ms & -- \\
-Notre modèle & 0,063 & 27,5 & \textbf{0\,\%} && 841\,k & \textbf{26 ms} & 3 Mo \\
-Notre modèle + affinage & 0,062 & \textbf{27,1} & \textbf{0\,\%} && 841\,k & 241 ms & 3 Mo \\
+Notre modèle & 0,063 & 28,3 & \textbf{0\,\%} && 841\,k & \textbf{25 ms} & 3 Mo \\
+Notre modèle + affinage & 0,062 & \textbf{28,0} & \textbf{0\,\%} && 841\,k & 247 ms & 3 Mo \\
 \midrule
-Kamada-Kawai & 0,062 & 30,0 & \textbf{0\,\%} && -- & 36 ms & -- \\
-DeepGD & 0,060 & 30,1 & 0,02\,\% && 42\,k & 47 ms & 6 Mo \\
-CoRe-GD & \textbf{0,059} & 28,9 & \textbf{0\,\%} && 930\,k & 60 ms & 2 Mo \\
+Kamada-Kawai & 0,062 & 30,0 & \textbf{0\,\%} && -- & 35 ms & -- \\
+DeepGD & 0,060 & 30,1 & 0,02\,\% && 42\,k & 36 ms & 6 Mo \\
+CoRe-GD & \textbf{0,059} & 29,0 & \textbf{0\,\%} && 930\,k & 58 ms & 2 Mo \\
 \bottomrule
 \end{tabular}}
 
 \vspace{0.2cm}
 \begin{tikzpicture}
-  \node[carte,draw=orange,fill=orangeclair,text width=0.9\textwidth,align=left,inner sep=4pt] {\small\textbf{Loss} : le stress seul (en pixels), puis un court affinage avec le stress à l'échelle optimale et les métriques écran, chacune à environ 3\,\% du stress.};
+  \node[carte,draw=orange,fill=orangeclair,text width=0.9\textwidth,align=left,inner sep=4pt] {\small\textbf{Loss} : le stress seul (en pixels), puis un court affinage avec en plus le stress à l'échelle optimale et les métriques écran, chacune à environ 3\,\% du stress.};
 \end{tikzpicture}
 
 \vspace{0.1cm}
 \begin{minipage}{0.96\textwidth}
 \scriptsize\textcolor{gris}{1\,000 graphes de test de Rome, même découpage pour les modèles appris. Stress : \emph{scale-normalized stress} (Ahmed et al., 2026) / nombre de paires. Temps d'un graphe à la fois, RTX 3060 (notre affinage : 18 ms par graphe par paquets de 64). Prétraitement compté pour DeepGD et CoRe-GD, pas pour nous.}
+\end{minipage}
+\end{frame}
+
+%---------------------------------------------------------------------
+\begin{frame}{Résultats : les mesures de la littérature}
+\centering
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}lcccccc@{}}
+\toprule
+ & \textbf{Longueurs} & \textbf{Voisinage} & \textbf{Angle de} & \textbf{Rapport} & \textbf{Résolution} & \textbf{Résolution} \\
+ & \textbf{d'arêtes} $\downarrow$ & \textbf{préservé} $\uparrow$ & \textbf{croisement} $\downarrow$ & \textbf{d'aspect} $\uparrow$ & \textbf{angulaire} $\uparrow$ & \textbf{des sommets} $\uparrow$ \\
+\midrule
+Aléatoire & 0,467 & 0,047 & 0,942 & \textbf{0,875} & 0,015 & 0,017 \\
+Notre modèle & 0,187 & 0,428 & 0,556 & 0,750 & 0,192 & \textbf{0,052} \\
+Notre modèle + affinage & 0,184 & \textbf{0,438} & \textbf{0,521} & 0,759 & \textbf{0,270} & 0,048 \\
+\midrule
+Kamada-Kawai & 0,168 & 0,414 & 0,581 & 0,736 & 0,212 & 0,051 \\
+DeepGD & 0,190 & 0,427 & 0,612 & 0,738 & 0,158 & 0,039 \\
+CoRe-GD & \textbf{0,163} & 0,427 & 0,559 & 0,744 & 0,215 & \textbf{0,052} \\
+\bottomrule
+\end{tabular}}
+
+\vspace{0.3cm}
+\begin{minipage}{0.94\textwidth}
+\small
+\begin{itemize}
+\setlength{\itemsep}{2pt}
+\item Mesures de qualité de (GD)$^2$ (Ahmed et al., 2020), reprises par DeepGD et SmartGD (Wang et al., 2021, 2023). Elles ignorent la taille du dessin : comparaison équitable.
+\item Avec l'affinage, \textbf{meilleurs sur 4 des 6} : voisinage, angle de croisement, rapport d'aspect (hors aléatoire), résolution angulaire.
+\item \textbf{Moins bons} sur l'uniformité des longueurs d'arêtes, et un peu sur la résolution des sommets.
+\end{itemize}
 \end{minipage}
 \end{frame}
 
@@ -501,7 +534,7 @@ Stress seul & \textbf{0,0629} & 30,7 & 0,028\,\% & 7,7 & 0,608 \\
   \node[carte] (g) {\textbf{Graphe}};
   \node[carte,right=of g,fill=bleuclair,draw=bleu] (m) {\textbf{Modèle}\\\scriptsize 12 tours au lieu de 5};
   \node[carte,right=of m] (d) {\textbf{Dessin}\\\scriptsize déjà bon};
-  \node[carte,right=of d,fill=orangeclair,draw=orange] (r) {\textbf{25 pas d'Adam}\\\scriptsize sur les positions,\\[-2pt]\scriptsize même loss};
+  \node[carte,right=of d,fill=orangeclair,draw=orange] (r) {\textbf{25 pas d'Adam}\\\scriptsize sur les positions,\\[-2pt]\scriptsize mêmes métriques};
   \node[carte,right=of r] (f) {\textbf{Dessin final}};
   \draw[fleche] (g) -- (m); \draw[fleche] (m) -- (d); \draw[fleche] (d) -- (r); \draw[fleche] (r) -- (f);
 \end{tikzpicture}
@@ -515,8 +548,8 @@ Stress seul & \textbf{0,0629} & 30,7 & 0,028\,\% & 7,7 & 0,608 \\
  & $\downarrow$ & \textbf{ments} $\downarrow$ & \textbf{superposés} $\downarrow$ & \textbf{nœud} $\downarrow$ & \textbf{min.} $\uparrow$ & \textbf{/ graphe} \\
 \midrule
 Modèle « stress seul » & 0,0621 & 30,9 & 0,026\,\% & 7,8 & 0,610 & 1 ms \\
-Modèle final, 12 tours & 0,0625 & 27,9 & 0,001\,\% & 6,0 & 0,631 & 2 ms \\
-\textbf{12 tours + affinage} & \textbf{0,0610} & \textbf{27,4} & \textbf{0\,\%} & \textbf{0,09} & \textbf{0,657} & 17 ms \\
+Modèle final, 12 tours & 0,0618 & 28,6 & 0,001\,\% & 4,9 & 0,627 & 2 ms \\
+\textbf{12 tours + affinage} & \textbf{0,0609} & \textbf{28,2} & \textbf{0\,\%} & \textbf{0,04} & \textbf{0,651} & 17 ms \\
 \bottomrule
 \end{tabular}
 
@@ -526,7 +559,7 @@ Modèle final, 12 tours & 0,0625 & 27,9 & 0,001\,\% & 6,0 & 0,631 & 2 ms \\
 \begin{itemize}
 \setlength{\itemsep}{1pt}
 \item \textbf{Meilleur sur les cinq critères à la fois} : plus de compromis entre le stress et le reste.
-\item Le deuxième axe du sujet (optimisation directe), \textbf{parti du dessin du modèle} : quelques pas suffisent. Stress à l'échelle optimale, comme le benchmark et CoRe-GD.
+\item Le deuxième axe du sujet (optimisation directe), \textbf{parti du dessin du modèle} : quelques pas suffisent.
 \end{itemize}
 \end{minipage}
 
@@ -544,8 +577,8 @@ Modèle final, 12 tours & 0,0625 & 27,9 & 0,001\,\% & 6,0 & 0,631 & 2 ms \\
 \begin{itemize}
 \setlength{\itemsep}{3pt}
 \item L'affinage ne déplace les nœuds que de \textbf{quelques pixels} : la forme ne change pas, d'où des planches de rendus presque identiques à l'échelle d'une slide.
-\item Mais il supprime les défauts de la taille d'un nœud : ici \textbf{24 défauts} (arêtes sur des nœuds, nœuds qui se touchent) \textbf{deviennent 0}.
-\item Sur le test : 5,8 arêtes sur des nœuds par graphe avant, 0,08 après.
+\item Mais il supprime les défauts de la taille d'un nœud : ici \textbf{16 défauts} (arêtes sur des nœuds, nœuds qui se touchent) \textbf{deviennent 0}.
+\item Sur le test : 5,0 arêtes sur des nœuds par graphe avant, 0,04 après.
 \end{itemize}
 \end{minipage}
 \end{frame}

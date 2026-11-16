@@ -18,7 +18,7 @@ from data.output import Layout, save_png
 from infer import load_model
 from loss import Loss
 from refine import ROUNDS, refine
-from train import PHASE_2_WEIGHTS
+from train import REFINE_WEIGHTS
 
 CHECKPOINT = Path("runs/model_final.pt")
 OUT = Path("docs/jalon2/affinage.png")
@@ -54,7 +54,7 @@ data = Path("data/rome")
 graphs = load_dataset(data)
 test = [graphs[p.stem] for p in split_dataset(data)[2]]
 model = load_model(CHECKPOINT).eval()
-loss_fn = Loss(PHASE_2_WEIGHTS)
+loss_fn = Loss(REFINE_WEIGHTS)
 
 best = None
 for g in [g for g in test if 40 <= g.num_nodes <= 70][:150]:
