@@ -1,4 +1,4 @@
-"""Versions vectorisées de node_overlaps et edge_overlaps.
+"""Chevauchements de nœuds et d'arêtes (versions vectorisées des anciennes boucles par paire).
 
 Testées : mêmes valeurs qu'une somme pixel par pixel sur toute l'image (à 0,1 % près pour les nœuds, la
 différence venant des queues de sigmoïde coupées à 1 %), voir les tests dans le message de commit.
@@ -14,8 +14,6 @@ Si elles font autre chose (stack, indexation de pos...), il faut adapter les deu
 
 graph peut être un batch PyG : seules les paires d'un même graphe comptent, et le résultat est la moyenne
 sur les graphes de la somme par graphe (voir metrics/batching.py).
-
-Architecture : batched_overlap, _boxes et _clip_to_strip peuvent aller dans metrics_helpers.py.
 """
 import torch
 

@@ -10,9 +10,6 @@ from data.output import Layout
 
 from metrics.screen_fill import screen_fill
 from metrics.stress import scaled_stress, stress
-#from metrics.node_overlaps import node_overlaps
-#from metrics.edge_overlaps import edge_overlaps
-
 from metrics.overlaps_vectorised import node_overlaps, edge_overlaps, edge_node_overlaps
 from metrics.edge_crossings import edge_crossings
 from metrics.edge_angles import edge_angles
