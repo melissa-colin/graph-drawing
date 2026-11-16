@@ -534,6 +534,23 @@ Modèle final, 12 tours & 0,0625 & 27,9 & 0,001\,\% & 6,0 & 0,631 & 2 ms \\
 \end{frame}
 
 %---------------------------------------------------------------------
+\begin{frame}{L'affinage, de près}
+\centering
+\includegraphics[width=\textwidth]{affinage.png}
+
+\vspace{0.3cm}
+\begin{minipage}{0.92\textwidth}
+\small
+\begin{itemize}
+\setlength{\itemsep}{3pt}
+\item L'affinage ne déplace les nœuds que de \textbf{quelques pixels} : la forme ne change pas, d'où des planches de rendus presque identiques à l'échelle d'une slide.
+\item Mais il supprime les défauts de la taille d'un nœud : ici \textbf{24 défauts} (arêtes sur des nœuds, nœuds qui se touchent) \textbf{deviennent 0}.
+\item Sur le test : 5,8 arêtes sur des nœuds par graphe avant, 0,08 après.
+\end{itemize}
+\end{minipage}
+\end{frame}
+
+%---------------------------------------------------------------------
 \begin{frame}{Fait : une tête soft-argmax séparable}
 \small La position est la moyenne de la carte de probabilités : $x$ ne dépend que des totaux par colonne, $y$ que des totaux par ligne. On prédit donc directement ces deux totaux.
 
