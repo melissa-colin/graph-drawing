@@ -167,3 +167,4 @@ def test_evaluate_all_in_a_process_pool_matches_serial(make_graph):
     with multiprocessing.get_context("spawn").Pool(2) as pool:
         parallel = evaluate_all(jobs, 100, pool)
     assert parallel == evaluate_all(jobs, 100)
+

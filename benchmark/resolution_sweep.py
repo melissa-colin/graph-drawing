@@ -69,7 +69,8 @@ def validation_starts(checkpoint, graphs, device):
     from refine import ROUNDS, draw
     model = load_model(Path(checkpoint)).to(device)
     starts = {"kk": [kamada_kawai(g) for g in graphs],
-              "ours": [draw(model, g.to(device), Loss({}), ROUNDS, 0).positions.cpu() for g in graphs]}
+              # clone: Data.to() moves the graph IN PLACE, the sweep needs the graphs on the CPU
+              "ours": [draw(model, g.clone().to(device), Loss({}), ROUNDS, 0).positions.cpu() for g in graphs]}
     torch.save({"names": names, "starts": starts}, cache)
     return starts
 

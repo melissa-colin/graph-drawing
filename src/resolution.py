@@ -53,9 +53,9 @@ def anchored_stress(layout, graph):
 def anchor(graph, positions):
     """Shallow copy of graph with stress_scale = the scale L that minimizes anchored_stress for these positions:
     with x = e / d per pair, sum (x / L - 1)^2 is minimal for L = sum x^2 / sum x."""
-    i, j = graph.dist_index
-    x = (torch.as_tensor(positions, dtype=torch.float64)[i] - torch.as_tensor(positions, dtype=torch.float64)[j]).norm(dim=1) \
-        / graph.dist_value.double()
+    P = torch.as_tensor(positions, dtype=torch.float64).cpu()
+    i, j = graph.dist_index.cpu()
+    x = (P[i] - P[j]).norm(dim=1) / graph.dist_value.double().cpu()
     anchored = copy.copy(graph)
     anchored.stress_scale = torch.tensor([float((x ** 2).sum() / x.sum().clamp_min(1e-12))])
     return anchored
