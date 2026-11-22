@@ -88,3 +88,20 @@ def test_batch_is_the_mean_of_the_graphs(make_graph, term):
     single = (float(term(Layout(P1, 100, 100), g1)) + float(term(Layout(P2, 100, 100), g2))) / 2
     batch = Batch.from_data_list([g1, g2])
     assert float(term(Layout(torch.cat((P1, P2)), 100, 100), batch)) == pytest.approx(single, rel=1e-5)
+
+
+def test_margin_adds_a_clearance(make_graph):
+    from metrics.geometric import with_margin
+    g = make_graph([], n=2, node_size=3.0)
+    apart = L([10, 10], [17, 10])  # 1 px between the disks: no contact
+    assert float(node_overlaps(apart, g)) == 0.0
+    assert float(with_margin(2.0)["node_overlaps"](apart, g)) == pytest.approx(1.0)  # (3 + 3 + 2 - 7)^2
+    e = make_graph([(0, 1)], n=3, node_size=3.0, edge_width=2.0, name="e")
+    near = L([0, 0], [40, 0], [20, 5])  # 1 px between node 2 and the edge
+    assert float(edge_node_overlaps(near, e)) == 0.0
+    assert float(with_margin(1.0)["edge_node_overlaps"](near, e)) == pytest.approx(0.0)
+    assert float(with_margin(2.0)["edge_node_overlaps"](near, e)) == pytest.approx(1.0)
+    p = make_graph([(0, 1), (2, 3)], node_size=1.0, edge_width=2.0, name="p")
+    parallel = L([0, 0], [40, 0], [0, 3], [40, 3])  # 1 px between the strokes
+    assert float(edge_overlaps(parallel, p)) == 0.0
+    assert float(with_margin(2.0)["edge_overlaps"](parallel, p)) == pytest.approx(1.0)

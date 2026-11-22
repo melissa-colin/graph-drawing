@@ -13,9 +13,12 @@ segments, but no pixel: same budget, same other terms, same weight selection.
                                                               where the two thick edges overlap)
                           relu((w_i + w_j) / 2 - dist(edge_i, edge_j))^2   otherwise
 
+margin (px, default 0): clearance added to every reach, for the control with a margin (with_margin).
 All in px^2, like the screen versions. graph can be a PyG batch: sum per graph, mean over the graphs (as
 every metric of metrics/). Static pairs are cached while refining one graph (metrics/batching.py).
 """
+import functools
+
 import torch
 
 from metrics.batching import cached, edge_width, node_graph
@@ -25,7 +28,7 @@ from metrics.overlaps_vectorised import _point_segment_distance
 MIN_SIN = 0.05  # the overlap area of two crossing edges grows as 1 / sin(angle): capped for almost parallel ones
 
 
-def node_overlaps(layout, graph):
+def node_overlaps(layout, graph, margin=0.0):
     pos = layout.positions
     r = graph.node_size.to(device=pos.device, dtype=pos.dtype)
     node_graph_index, num_graphs = node_graph(graph, pos.device)
@@ -35,10 +38,10 @@ def node_overlaps(layout, graph):
         return same.nonzero(as_tuple=True)
     i, j = cached(graph, ("geo_node_pairs", str(pos.device)), static)
     d = _distance(pos[i] - pos[j])
-    return torch.relu(r[i] + r[j] - d).square().sum() / num_graphs + pos.sum() * 0.0
+    return torch.relu(r[i] + r[j] + margin - d).square().sum() / num_graphs + pos.sum() * 0.0
 
 
-def edge_node_overlaps(layout, graph):
+def edge_node_overlaps(layout, graph, margin=0.0):
     pos = layout.positions
     r = graph.node_size.to(device=pos.device, dtype=pos.dtype)
     node_graph_index, num_graphs = node_graph(graph, pos.device)
@@ -53,10 +56,10 @@ def edge_node_overlaps(layout, graph):
         return u, v, edge_width(graph, edge_graph, pos), e, k
     u, v, w, e, k = cached(graph, ("geo_edge_node_pairs", str(pos.device)), static)
     d = _point_segment_distance(pos[k], pos[u[e]], pos[v[e]])
-    return torch.relu(r[k] + w[e] / 2 - d).square().sum() / num_graphs + pos.sum() * 0.0
+    return torch.relu(r[k] + w[e] / 2 + margin - d).square().sum() / num_graphs + pos.sum() * 0.0
 
 
-def edge_overlaps(layout, graph):
+def edge_overlaps(layout, graph, margin=0.0):
     pos = layout.positions
     node_graph_index, num_graphs = node_graph(graph, pos.device)
     u, v, i, j = _candidate_pairs(graph, pos.device)  # pairs of edges of a same graph, no common node
@@ -65,7 +68,7 @@ def edge_overlaps(layout, graph):
     with torch.no_grad():  # which pairs cross, which are close: no gradient through the selection
         a, b, c, d = pos[u[i]], pos[v[i]], pos[u[j]], pos[v[j]]
         crossing = (_side(a, b, c) * _side(a, b, d) < 0) & (_side(c, d, a) * _side(c, d, b) < 0)
-        reach = (w[i] + w[j]) / 2
+        reach = (w[i] + w[j]) / 2 + margin
         near = ((torch.minimum(a, b) - reach[:, None] < torch.maximum(c, d))
                 & (torch.minimum(c, d) - reach[:, None] < torch.maximum(a, b))).all(dim=1) & ~crossing
 
@@ -81,7 +84,7 @@ def edge_overlaps(layout, graph):
         a, b, c, d = pos[u[ni]], pos[v[ni]], pos[u[nj]], pos[v[nj]]
         dist = torch.stack((_point_segment_distance(a, c, d), _point_segment_distance(b, c, d),
                             _point_segment_distance(c, a, b), _point_segment_distance(d, a, b))).min(dim=0).values
-        total = total + torch.relu((w[ni] + w[nj]) / 2 - dist).square().sum()
+        total = total + torch.relu((w[ni] + w[nj]) / 2 + margin - dist).square().sum()
     return total / num_graphs
 
 
@@ -91,3 +94,10 @@ def _distance(vectors):
 
 
 GEOMETRIC = {"node_overlaps": node_overlaps, "edge_overlaps": edge_overlaps, "edge_node_overlaps": edge_node_overlaps}
+
+
+def with_margin(margin):
+    """The three terms with a clearance of `margin` px: shapes closer than that are penalized too. The screen
+    terms have one built in (the sigmoid tail of the SDF coverage reaches about 2.3 px), the control with a
+    margin tells whether the screen space brings more than that clearance."""
+    return {name: functools.partial(fn, margin=margin) for name, fn in GEOMETRIC.items()}

@@ -66,7 +66,11 @@ SCREEN_TERMS = {"node_overlaps": node_overlaps, "edge_overlaps": edge_overlaps, 
 TERMS = {
     "screen": {**SHARED_TERMS, **SCREEN_TERMS},
     "geometric": {**SHARED_TERMS, **geometric.GEOMETRIC},
+    # controls with a clearance: does the screen space bring more than the margin of its sigmoid coverage?
+    "geometric_m1": {**SHARED_TERMS, **geometric.with_margin(1.0)},
+    "geometric_m2": {**SHARED_TERMS, **geometric.with_margin(2.0)},
 }
+KINDS = ("screen", "geometric")  # the kinds of the main sweep; the margin controls run apart (--kinds)
 
 
 class TermLoss:
@@ -223,13 +227,14 @@ def choose(candidates, start_stress):
 
 
 def sweep_setting(size, radius, width, val, test, refined_starts, device="cpu", pool=None,
-                  fractions=FRACTIONS, learning_rates=LEARNING_RATES, steps=STEPS, batch_size=64):
+                  fractions=FRACTIONS, learning_rates=LEARNING_RATES, steps=STEPS, batch_size=64,
+                  kinds=KINDS, measure_starts=True):
     """One setting (image size, node radius, edge width) of the sweep.
 
     val, test: {method: [(positions, graph), ...]} starting drawings in ANY frame (rescaled here), graphs with
     any style (restyled here). The same graphs, in the same order, for every method. refined_starts: methods
     of `val` / `test` to refine (e.g. ["kk", "ours"]); val needs only those.
-    For each kind ("screen", "geometric"): balanced weights from the validation starting drawings, then every
+    For each kind of `kinds` ("screen", "geometric", ...): balanced weights from the validation starting drawings, then every
     (fraction, learning rate) is tried on the validation set and one is chosen by `choose`, the same way for
     both kinds. Then every method of `test` is measured as it is, and each refined start with each kind.
 
@@ -245,7 +250,7 @@ def sweep_setting(size, radius, width, val, test, refined_starts, device="cpu", 
     start_stress = mean_measures(evaluate_all(val_starts, size, pool))["stress"]
 
     selection = {}
-    for kind in ("screen", "geometric"):
+    for kind in kinds:
         means = term_means(val_starts, kind, size)
         candidates = []
         for fraction in fractions:
@@ -266,8 +271,9 @@ def sweep_setting(size, radius, width, val, test, refined_starts, device="cpu", 
         for index, measures in enumerate(evaluate_all(drawings, size, pool)):
             rows.append({"method": method, "graph": index, **measures})
 
-    for method, drawings in test.items():
-        add(method, drawings)
+    if measure_starts:  # False: only the refinements (e.g. extra controls, the starts are already measured)
+        for method, drawings in test.items():
+            add(method, drawings)
     for start in refined_starts:
         graphs = [g for _, g in test[start]]
         for kind, chosen in selection.items():

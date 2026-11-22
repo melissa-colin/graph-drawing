@@ -100,13 +100,15 @@ def run(args):
 
     print(f"device {device} | {len(val[REFINED[0]])} validation / {len(test['kk'])} test graphs | "
           f"{len(settings)} settings | {len(fractions) * len(rates)} candidates per kind")
-    rows_path, selection = OUT / ("rows_quick.csv" if args.quick else "rows.csv"), {}
+    kinds = tuple(args.kinds.split(","))
+    tag = ("_" + args.tag if args.tag else "") + ("_quick" if args.quick else "")
+    rows_path, selection = OUT / f"rows{tag}.csv", {}
     writer, rows_file = None, open(rows_path, "w", newline="")
     with make_pool(args.workers) as pool:
         for size, radius, width in settings:
             t = time.perf_counter()
             rows, chosen = sweep_setting(size, radius, width, val, test, REFINED, device, pool,
-                                         fractions, rates, steps)
+                                         fractions, rates, steps, kinds=kinds, measure_starts=not args.only_refined)
             key = f"{size}px_r{radius:g}_w{width:g}"
             selection[key] = chosen
             for row in rows:
@@ -119,7 +121,7 @@ def run(args):
             print(f"{key}: {time.perf_counter() - t:.0f} s | chosen " +
                   ", ".join(f"{k}: fraction {c['fraction']}, lr {c['lr']}" for k, c in chosen.items()), flush=True)
     rows_file.close()
-    (OUT / ("selection_quick.json" if args.quick else "selection.json")).write_text(json.dumps(selection, indent=1))
+    (OUT / f"selection{tag}.json").write_text(json.dumps(selection, indent=1))
 
 
 # -----------------------------------------------------------------------------------------------------------
@@ -128,7 +130,13 @@ def run(args):
 LABELS = {"random": "Aléatoire", "kk": "Kamada-Kawai", "deepgd": "DeepGD", "coregd": "CoRe-GD",
           "ours": "Notre modèle", "ours500": "Notre modèle + affinage à 500 px",
           "kk+screen": "KK + affinage écran", "kk+geometric": "KK + affinage géométrique",
-          "ours+screen": "Notre modèle + affinage écran", "ours+geometric": "Notre modèle + affinage géométrique"}
+          "ours+screen": "Notre modèle + affinage écran", "ours+geometric": "Notre modèle + affinage géométrique",
+          "kk+geometric_m1": "KK + géométrique, marge 1 px", "kk+geometric_m2": "KK + géométrique, marge 2 px",
+          "ours+geometric_m1": "Notre modèle + géométrique, marge 1 px",
+          "ours+geometric_m2": "Notre modèle + géométrique, marge 2 px"}
+CONTROLS = {"geometric": "géométrique", "geometric_m1": "géométrique, marge 1 px",
+            "geometric_m2": "géométrique, marge 2 px"}
+EXTRA_ROWS = ("margin",)  # tags of extra runs (--tag) merged into the report when present
 MEASURES = {"hidden_nodes": "Nœuds cachés", "merged_nodes": "Nœuds fusionnés",
             "ambiguous_edges": "Arêtes ambiguës / arête", "edge_overlap": "Arêtes confondues",
             "node_visibility": "Visibilité des nœuds", "stress": "Stress", "crossings": "Croisements"}
@@ -163,9 +171,10 @@ def by_setting(rows):
 def report(args):
     from stats import bootstrap_ci, holm, paired_test
 
-    rows_path = OUT / ("rows_quick.csv" if args.quick else "rows.csv")
-    table = by_setting(load_rows(rows_path))
-    lines = [f"# Balayage en résolution ({rows_path.name})", "",
+    suffix = "_quick" if args.quick else ""
+    paths = [OUT / f"rows{suffix}.csv"] + [p for p in (OUT / f"rows_{t}{suffix}.csv" for t in EXTRA_ROWS) if p.exists()]
+    table = by_setting([r for p in paths for r in load_rows(p)])
+    lines = [f"# Balayage en résolution ({', '.join(p.name for p in paths)})", "",
              "Moyenne sur les graphes de test [IC à 95 % par bootstrap]. Nœuds de rayon r, arêtes de largeur w, "
              "image s × s. Flèche : sens du mieux.", ""]
     arrows = {"node_visibility": "↑"}
@@ -182,24 +191,28 @@ def report(args):
                 lines.append(f"| {LABELS[method]} | " + " | ".join(cells) + " |")
         lines.append("")
 
-    # screen vs geometric, paired by graph, Holm over every (setting, start, measure)
+    # screen vs each control present, paired by graph, Holm over every (setting, start, control, measure)
     tests = []
     for setting, methods in sorted(table.items()):
         for start in REFINED:
-            for m in ("hidden_nodes", "merged_nodes", "ambiguous_edges", "stress"):
-                a = [r[m] for r in methods[f"{start}+screen"]]
-                b = [r[m] for r in methods[f"{start}+geometric"]]
-                diff, p = paired_test(a, b)
-                tests.append((setting, start, m, diff, p))
-    adjusted = holm([t[4] for t in tests])
-    lines += ["## Écran contre géométrique (témoin)", "",
-              "Différence moyenne écran − géométrique, appariée par graphe (négatif : l'écran fait mieux sur ces "
+            for control in CONTROLS:
+                if f"{start}+{control}" not in methods:
+                    continue
+                for m in ("hidden_nodes", "merged_nodes", "ambiguous_edges", "stress"):
+                    a = [r[m] for r in methods[f"{start}+screen"]]
+                    b = [r[m] for r in methods[f"{start}+{control}"]]
+                    diff, p = paired_test(a, b)
+                    tests.append((setting, start, control, m, diff, p))
+    adjusted = holm([t[5] for t in tests])
+    lines += ["## Écran contre les témoins géométriques", "",
+              "Différence moyenne écran − témoin, appariée par graphe (négatif : l'écran fait mieux sur ces "
               f"mesures, toutes à minimiser). Wilcoxon signé, p corrigé par Holm sur les {len(tests)} tests.", "",
-              "| s | r | w | départ | mesure | écran − géométrique | p (Holm) |", "|---|---|---|---|---|---|---|"]
-    for (setting, start, m, diff, _), p in zip(tests, adjusted):
+              "| s | r | w | départ | témoin | mesure | écran − témoin | p (Holm) |", "|---|---|---|---|---|---|---|---|"]
+    for (setting, start, control, m, diff, _), p in zip(tests, adjusted):
         mark = " *" if p < 0.05 else ""
-        lines.append(f"| {setting[0]:g} | {setting[1]:g} | {setting[2]:g} | {start} | {MEASURES[m]} | {diff:+.4f} | {p:.2g}{mark} |")
-    (OUT / ("results_resolution_quick.md" if args.quick else "results_resolution.md")).write_text("\n".join(lines) + "\n")
+        lines.append(f"| {setting[0]:g} | {setting[1]:g} | {setting[2]:g} | {start} | {CONTROLS[control]} | "
+                     f"{MEASURES[m]} | {diff:+.4f} | {p:.2g}{mark} |")
+    (OUT / f"results_resolution{suffix}.md").write_text("\n".join(lines) + "\n")
     figures(table, args.quick)
     print("\n".join(lines[:40]))
 
@@ -270,6 +283,9 @@ if __name__ == "__main__":
     p_run.add_argument("--workers", type=int, default=max(1, multiprocessing.cpu_count() - 4))
     p_run.add_argument("--val", type=int, default=200, help="validation graphs used to choose the refinement")
     p_run.add_argument("--quick", action="store_true")
+    p_run.add_argument("--kinds", default="screen,geometric", help="refinement kinds (resolution.TERMS)")
+    p_run.add_argument("--only-refined", action="store_true", help="do not measure the starting drawings again")
+    p_run.add_argument("--tag", default="", help="suffix of the output files (rows_TAG.csv, selection_TAG.json)")
     p_rep = sub.add_parser("report")
     p_rep.add_argument("--quick", action="store_true")
     a = parser.parse_args()

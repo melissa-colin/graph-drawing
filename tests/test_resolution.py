@@ -200,3 +200,14 @@ if __name__ == "__main__":  # spawn re-imports this file in every worker
     out = subprocess.run([_sys.executable, str(script)], capture_output=True, text=True, timeout=300)
     assert out.returncode == 0, out.stderr[-2000:]
     assert out.stdout.strip().endswith("400")
+
+
+def test_sweep_setting_extra_controls_only(make_graph):
+    from resolution import sweep_setting
+    torch.manual_seed(0)
+    g = [make_graph(GRID, name=f"m{i}") for i in range(2)]
+    d = lambda i: [(torch.rand(16, 2) * 10, g[i])]
+    rows, selection = sweep_setting(80, 4.0, 1.0, {"kk": d(0)}, {"kk": d(1)}, ["kk"], fractions=(0.3,),
+                                    learning_rates=(1.0,), steps=3, batch_size=1, kinds=("geometric_m1",),
+                                    measure_starts=False)
+    assert {r["method"] for r in rows} == {"kk+geometric_m1"} and set(selection) == {"geometric_m1"}

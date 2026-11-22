@@ -41,8 +41,8 @@ def test_report_end_to_end(tmp_path):
 
     md = (tmp_path / "results_resolution.md").read_text()
     assert md.count("## s = ") == 4
-    assert "Écran contre géométrique" in md
-    assert md.count("| kk | Nœuds cachés |") == 4  # one paired test per setting, start and measure
+    assert "Écran contre les témoins géométriques" in md
+    assert md.count("| kk | géométrique | Nœuds cachés |") == 4  # one paired test per setting, start, control, measure
     for m in ("hidden_nodes", "merged_nodes", "ambiguous_edges", "stress"):
         for name in ("methods", "screen_vs_geometric"):
             assert (tmp_path / f"{m}_{name}.png").stat().st_size > 10_000
