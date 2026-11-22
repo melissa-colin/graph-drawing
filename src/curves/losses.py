@@ -9,7 +9,8 @@ graph.edge_index. graph can be a PyG batch: sum per graph, mean over the graphs.
 - curve_curve_overlaps: area where two curves without a common node overlap, with the exact coverage of
   each whole curve. The pixels are visited by pairs of SUB-SEGMENTS whose boxes touch (small boxes, instead of
   the box of two whole curves), and a pixel is counted only in the pair made of the segment of each curve
-  nearest to it: every pixel once, even where several segments meet (joints).
+  nearest to it (among a segment and its two neighbours): every pixel once at the joints, up to a few pixels
+  of very bent short edges (+0.3 % on a dense graph with random strong bends).
 - curve_crossings: for each pair of crossing curves without a common node, the smallest distance from an end
   of one curve to the other curve. For straight edges it is close to metrics/edge_crossings.py (distance of an
   end to the other edge). Not the smallest move of a sub-segment end, which is 0 when the crossing is at a
@@ -133,12 +134,23 @@ def curve_curve_overlaps(layout, offsets, graph, softness=0.5, k=K):
 
     def cov(edge, segment):
         def coverage(X, Y, idx):
-            p = pts[edge[idx]][:, None, None]  # (k, 1, 1, K + 1, 2), with gradient
-            dist = segment_distance(X[..., None], Y[..., None], (p[..., :-1, 0], p[..., :-1, 1]),
-                                    (p[..., 1:, 0], p[..., 1:, 1]))  # (k, Sy, Sx, K)
-            nearest, owner = dist.min(dim=-1)
-            mine = (owner == _col(segment[idx])).to(dist.dtype)  # the pixel belongs to this segment's pair
-            return torch.sigmoid(-(nearest - _col(w[edge[idx]]) / 2) / softness) * mine
+            with torch.no_grad():  # is this segment the nearest one of its curve to each pixel? selection only
+                # among the segment and its two neighbours (3x faster than all K): a quadratic Bezier curve does
+                # not fold back, so another segment is nearer only on very bent short edges (+0.3 % on a dense
+                # graph with random strong bends, where a few pixels get counted twice)
+                e, sgm = edge[idx], segment[idx]
+                cand = (sgm[:, None] + torch.tensor([-1, 0, 1], device=sgm.device)).clamp(0, pts.shape[1] - 2)
+                a, b = pts[e[:, None], cand], pts[e[:, None], cand + 1]  # (k, 3, 2)
+                a, b = a[:, None, None], b[:, None, None]  # (k, 1, 1, 3, 2)
+                dist = segment_distance(X[..., None], Y[..., None], (a[..., 0], a[..., 1]), (b[..., 0], b[..., 1]))
+                nearest = torch.gather(cand[:, None, None, :].expand(*dist.shape), -1, dist.argmin(dim=-1, keepdim=True))
+                mine = (nearest[..., 0] == _col(sgm)).to(dist.dtype)
+            # where this segment is the nearest one, its distance is the distance to the curve: the gradient
+            # only needs this one segment (8x smaller autograd graph than through all K, same values)
+            e, sgm = edge[idx], segment[idx]
+            a, b = pts[e, sgm], pts[e, sgm + 1]
+            d = segment_distance(X, Y, (_col(a[:, 0]), _col(a[:, 1])), (_col(b[:, 0]), _col(b[:, 1])))
+            return torch.sigmoid(-(d - _col(w[e]) / 2) / softness) * mine
         return coverage
 
     return batched_overlap(x0, y0, x1, y1, cov(e1, s1), cov(e2, s2), pos) / num_graphs + _zero(pos, offsets)
