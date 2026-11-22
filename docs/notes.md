@@ -73,4 +73,10 @@ Obligatoire : 1–2 slides à la soutenance. On mesure dès le début.
 
 | Date | Expérience | Machine | Durée | Énergie (kWh) | CO₂eq (g) |
 |------|------------|---------|-------|---------------|-----------|
-|      |            |         |       |               |           |
+| 2026-11-22 | Entraînement (phases 1 et 2), majorant | deepeirb, RTX 6000 Ada | 27 min 38 s | 0,0616 | 3,45 |
+| 2026-11-22 | Benchmark (compare.py), majorant | deepeirb, RTX 6000 Ada | 5 min 55 s | 0,0191 | 1,07 |
+| 2026-11-22 | Balayage en résolution, majorant | deepeirb, RTX 6000 Ada | 48 min 32 s | 0,1527 | 8,56 |
+| 2026-11-22 | Arêtes courbes, majorant | deepeirb, RTX 6000 Ada | 6 min 17 s | 0,0228 | 1,28 |
+| 2026-11-22 | Témoins géométriques avec marge | deepeirb, RTX 6000 Ada | 28 min 41 s | 0,0898 | 5,03 |
+
+Détails, corrections des majorants et énergie par dessin : [`impact.md`](impact.md).
