@@ -33,7 +33,7 @@ Sujet complet : [`docs/sujet.pdf`](docs/sujet.pdf).
 | Tests (CPU, sans données : `python -m pytest -q`) | `tests/` |
 | Mesures sur l'image rendue (nœuds cachés ou fusionnés, arêtes ambiguës…) | `src/metrics/image_quality.py` |
 | Balayage résolution × taille des nœuds, écran contre témoin géométrique | `benchmark/resolution_sweep.py`, `src/resolution.py`, `src/metrics/geometric.py` |
-| Arêtes courbes optimisées à l'écran | `src/curves/`, `benchmark/curves.py` |
+| Arêtes courbes optimisées à l'écran | `src/curves/`, `benchmark/curves_experiment.py` |
 | Démo (`python demo/app.py --checkpoint runs/model.pt`) | `demo/` |
 | Impact environnemental (mesures codecarbon, énergie par dessin) | `src/tools/carbon.py`, `src/tools/run_tracked.py`, `benchmark/energy.py`, `docs/impact.md` |
 
