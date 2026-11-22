@@ -98,3 +98,42 @@ def test_evaluate_has_every_measure(make_graph):
     g = with_style(make_graph(GRID), 2.0, 1.0)
     m = evaluate(rescale_to_frame(torch.rand(16, 2), 100, 2), g, 100)
     assert {"stress", "crossings", "hidden_nodes", "merged_nodes", "ambiguous_edges"} <= set(m)
+
+
+def test_choose_respects_the_stress_budget():
+    cands = [({"a": 1}, {"stress": 1.00, "hidden_nodes": .5, "merged_nodes": 0, "ambiguous_edges": 0}),
+             ({"a": 2}, {"stress": 1.04, "hidden_nodes": .1, "merged_nodes": 0, "ambiguous_edges": 0}),
+             ({"a": 3}, {"stress": 1.30, "hidden_nodes": .0, "merged_nodes": 0, "ambiguous_edges": 0})]
+    from resolution import choose
+    assert choose(cands, 1.0)[0] == {"a": 2}  # the best within +5 % of stress
+    assert choose(cands, 0.5)[0] == {"a": 1}  # nothing within budget: the lowest stress
+
+
+def test_sweep_setting_end_to_end(make_graph):
+    """A tiny sweep: 2 validation and 2 test graphs, 2 starting methods, 1 x 2 candidates."""
+    from resolution import sweep_setting
+    torch.manual_seed(0)
+    g = [make_graph(GRID, name=f"g{i}") for i in range(4)]
+    crowded = lambda: torch.rand(16, 2) * 10  # rescaled to the frame anyway
+    val = {"kk": [(crowded(), g[0]), (crowded(), g[1])], "ours": [(crowded(), g[0]), (crowded(), g[1])]}
+    test = {"kk": [(crowded(), g[2]), (crowded(), g[3])], "ours": [(crowded(), g[2]), (crowded(), g[3])],
+            "random": [(crowded(), g[2]), (crowded(), g[3])]}
+    rows, selection = sweep_setting(80, 4.0, 1.0, val, test, ["kk", "ours"], fractions=(0.3,),
+                                    learning_rates=(0.5, 1.0), steps=5, batch_size=2)
+    methods = {r["method"] for r in rows}
+    assert methods == {"kk", "ours", "random", "kk+screen", "kk+geometric", "ours+screen", "ours+geometric"}
+    assert len(rows) == 7 * 2
+    for kind in ("screen", "geometric"):
+        assert selection[kind]["lr"] in (0.5, 1.0) and len(selection[kind]["candidates"]) == 2
+        assert selection[kind]["weights"]["stress"] == 1.0
+
+
+def test_evaluate_all_in_a_process_pool_matches_serial(make_graph):
+    import multiprocessing
+    from resolution import evaluate_all
+    torch.manual_seed(0)
+    jobs = [(rescale_to_frame(torch.rand(16, 2), 100, 3), with_style(make_graph(GRID, name=f"g{i}"), 3.0, 1.0))
+            for i in range(3)]
+    with multiprocessing.get_context("spawn").Pool(2) as pool:
+        parallel = evaluate_all(jobs, 100, pool)
+    assert parallel == evaluate_all(jobs, 100)

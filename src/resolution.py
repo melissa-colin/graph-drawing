@@ -148,3 +148,84 @@ def defect_score(measures):
 def mean_measures(rows):
     keys = rows[0].keys()
     return {k: sum(r[k] for r in rows) / len(rows) for k in keys}
+
+
+# -----------------------------------------------------------------------------------------------------------
+# One setting of the sweep: choose the refinement on the validation graphs, run it on the test graphs
+# -----------------------------------------------------------------------------------------------------------
+FRACTIONS = (0.03, 0.1, 0.3, 1.0)  # weight of each term, as a fraction of its balanced weight (0.03: the team's)
+LEARNING_RATES = (0.25, 0.5, 1.0, 2.0)  # pixels per step, roughly (1.0: the team's)
+STEPS = 25  # the team's refinement budget (refine.STEPS), the same for every method and setting
+STRESS_TOLERANCE = 1.05  # a refinement may cost at most 5 % of stress (the team's rule for PHASE_2_WEIGHTS)
+
+
+def evaluate_all(jobs, size, pool=None):
+    """evaluate() on every (positions, graph) of jobs, in a process pool if given (image measures are numpy)."""
+    args = [(P, g, size) for P, g in jobs]
+    if pool is None:
+        return [evaluate(*a) for a in args]
+    return list(pool.starmap(evaluate, args, chunksize=max(1, len(args) // (4 * pool._processes))))
+
+
+def choose(candidates, start_stress):
+    """The selection rule, declared before looking at the test: among the candidates whose mean stress is at
+    most STRESS_TOLERANCE x the stress of the starting drawings, the lowest mean defect score; if none is,
+    the lowest stress. candidates: list of (params, mean measures)."""
+    allowed = [c for c in candidates if c[1]["stress"] <= STRESS_TOLERANCE * start_stress]
+    if allowed:
+        return min(allowed, key=lambda c: defect_score(c[1]))
+    return min(candidates, key=lambda c: c[1]["stress"])
+
+
+def sweep_setting(size, radius, width, val, test, refined_starts, device="cpu", pool=None,
+                  fractions=FRACTIONS, learning_rates=LEARNING_RATES, steps=STEPS, batch_size=64):
+    """One setting (image size, node radius, edge width) of the sweep.
+
+    val, test: {method: [(positions, graph), ...]} starting drawings in ANY frame (rescaled here), graphs with
+    any style (restyled here). The same graphs, in the same order, for every method. refined_starts: methods
+    of `val` / `test` to refine (e.g. ["kk", "ours"]); val needs only those.
+    For each kind ("screen", "geometric"): balanced weights from the validation starting drawings, then every
+    (fraction, learning rate) is tried on the validation set and one is chosen by `choose`, the same way for
+    both kinds. Then every method of `test` is measured as it is, and each refined start with each kind.
+
+    Returns (rows, selection): one row per test drawing {method, graph index, measures...};
+    selection[kind] = chosen parameters, weights and the validation scores of every candidate.
+    """
+    def prepare(drawings):
+        return [(rescale_to_frame(P, size, radius), with_style(g, radius, width)) for P, g in drawings]
+    val = {m: prepare(val[m]) for m in refined_starts}
+    test = {m: prepare(d) for m, d in test.items()}
+    val_starts = [d for m in refined_starts for d in val[m]]
+    start_stress = mean_measures(evaluate_all(val_starts, size, pool))["stress"]
+
+    selection = {}
+    for kind in ("screen", "geometric"):
+        means = term_means(val_starts, kind, size)
+        candidates = []
+        for fraction in fractions:
+            weights = balanced_weights(means, fraction)
+            for lr in learning_rates:
+                P = refine_all([p for p, _ in val_starts], [g for _, g in val_starts], size, make_loss(kind, weights),
+                               steps, lr, radius, device, batch_size)
+                scores = mean_measures(evaluate_all(list(zip(P, [g for _, g in val_starts])), size, pool))
+                candidates.append(({"fraction": fraction, "lr": lr}, scores))
+        params, scores = choose(candidates, start_stress)
+        selection[kind] = {**params, "weights": balanced_weights(means, params["fraction"]), "val": scores,
+                           "start_stress": start_stress,
+                           "candidates": [{**p, **s} for p, s in candidates]}
+
+    rows = []
+
+    def add(method, drawings):
+        for index, measures in enumerate(evaluate_all(drawings, size, pool)):
+            rows.append({"method": method, "graph": index, **measures})
+
+    for method, drawings in test.items():
+        add(method, drawings)
+    for start in refined_starts:
+        graphs = [g for _, g in test[start]]
+        for kind, chosen in selection.items():
+            P = refine_all([p for p, _ in test[start]], graphs, size, make_loss(kind, chosen["weights"]),
+                           steps, chosen["lr"], radius, device, batch_size)
+            add(f"{start}+{kind}", list(zip(P, graphs)))
+    return rows, selection
