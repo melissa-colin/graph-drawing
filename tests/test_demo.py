@@ -92,10 +92,11 @@ def test_app_builds_and_draws(monkeypatch, tmp_path):
     g = app.get_graph("Générateur", None, "grille", 9, 0, None)
     assert g.num_nodes == 9
     graph = ["Générateur", None, "grille", 9, 0, None]
-    before, after, gif, table, info = blocks.callbacks["draw"](*graph, 80, 3.0, 1.0, "Kamada-Kawai", True, 5, True, True)
+    before, after, gif, table, info = blocks.callbacks["draw"](*graph, 80, 3.0, 1.0, False, "Kamada-Kawai", True, 5,
+                                                               True, True)
     assert before.size == after.size == (160, 160) and Path(gif).exists()
     assert len(table) == len(core.MEASURE_LABELS) and "9 nœuds" in info
-    *images, table2 = blocks.callbacks["compare"](*graph, 80, 3.0, 1.0)
+    *images, table2 = blocks.callbacks["compare"](*graph, 80, 3.0, 1.0, True)
     assert len(images) == 3 and len(table2[0]) == 4
 
 
@@ -108,3 +109,15 @@ def test_rome_test_graphs_are_in_the_test_split(rome_dir):
     train, val, test = split_dataset(rome_dir)
     test_names = {p.stem for p in test}
     assert set(names) <= test_names
+
+
+def test_degree_radii():
+    g = core.generate("arbre", 30, seed=2)
+    r = core.degree_radii(g, 4.0)
+    degree = torch.bincount(g.edge_index.reshape(-1), minlength=g.num_nodes)
+    assert r.min() >= 2.0 and r.max() <= 8.0
+    assert r[degree.argmax()] >= r[degree.argmin()]  # hubs bigger
+    d = core.draw(g, "kk", 150, 4.0, 1.0, refine=True, steps=5, varied=True)
+    assert torch.equal(d.graph.node_size, r)
+    margin = float(r.max())
+    assert d.positions.min() >= margin - 1e-4 and d.positions.max() <= 150 - margin + 1e-4

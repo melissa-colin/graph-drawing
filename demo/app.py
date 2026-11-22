@@ -63,11 +63,14 @@ def build_app(model=None):
             size = gr.Slider(80, 500, value=150, step=10, label="Côté de l'image (px)")
             radius = gr.Slider(1, 10, value=4, step=0.5, label="Rayon des nœuds (px)")
             width = gr.Slider(0.5, 4, value=1, step=0.5, label="Épaisseur des arêtes (px)")
-        return [size, radius, width]
+        varied = gr.Checkbox(False, label="Rayon des nœuds selon leur degré")
+        return [size, radius, width, varied]
 
-    def run_draw(source, rome, kind, n, seed, upload, size, radius, width, method, refine, steps, curves, defects):
+    def run_draw(source, rome, kind, n, seed, upload, size, radius, width, varied, method, refine, steps, curves,
+                 defects):
         g = get_graph(source, rome, kind, n, seed, upload)
-        d = core.draw(g, methods[method], int(size), float(radius), float(width), refine, curves, model, int(steps))
+        d = core.draw(g, methods[method], int(size), float(radius), float(width), refine, curves, model, int(steps),
+                      varied)
         start = core.Drawing(d.graph, d.size, d.frames[0], d.offsets * 0)
         gif = core.animation(d, Path(tempfile.mkdtemp()) / "affinage.gif", scale=2) if refine and steps > 0 else None
         timing = " · ".join(f"{k} {v:.1f} s" for k, v in d.seconds.items())
@@ -76,12 +79,13 @@ def build_app(model=None):
         return (core.render(start, 2, defects), core.render(d, 2, defects), gif, table,
                 f"{g.num_nodes} nœuds, {g.edge_index.shape[1]} arêtes · {timing}")
 
-    def run_compare(source, rome, kind, n, seed, upload, size, radius, width):
+    def run_compare(source, rome, kind, n, seed, upload, size, radius, width, varied):
         g = get_graph(source, rome, kind, n, seed, upload)
         best = "ours" if model is not None else "kk"
-        drawings = [core.draw(g, "kk", int(size), float(radius), float(width), refine=False),
-                    core.draw(g, best, int(size), float(radius), float(width), refine=True, model=model),
-                    core.draw(g, best, int(size), float(radius), float(width), refine=True, curves=True, model=model)]
+        setting = (int(size), float(radius), float(width))
+        drawings = [core.draw(g, "kk", *setting, refine=False, varied=varied),
+                    core.draw(g, best, *setting, refine=True, model=model, varied=varied),
+                    core.draw(g, best, *setting, refine=True, curves=True, model=model, varied=varied)]
         return [core.render(d, 2, True) for d in drawings] + [core.measures_table(drawings)]
 
     with gr.Blocks(title="Dessin de graphes en espace écran") as app:

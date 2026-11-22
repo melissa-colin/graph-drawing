@@ -60,6 +60,13 @@ def generate(kind, n, seed=0):
     return graph_from_networkx(GENERATORS[kind](int(n), int(seed)), f"{kind}-{n}")
 
 
+def degree_radii(graph, radius):
+    """(N,) node radii growing with the degree: radius * sqrt(degree / mean degree), within [radius / 2, 2 radius]
+    (hubs drawn bigger, a common style that only a screen-space method can take into account)."""
+    degree = torch.bincount(graph.edge_index.reshape(-1), minlength=graph.num_nodes).float()
+    return (radius * (degree / degree.mean().clamp_min(1e-9)).sqrt()).clamp(radius / 2, 2 * radius)
+
+
 def kamada_kawai(graph):
     G = nx.Graph()
     G.add_nodes_from(range(graph.num_nodes))
@@ -113,19 +120,25 @@ class Drawing:
     measures: dict = field(default_factory=dict)
 
 
-def draw(graph, method, size, radius, width, refine=True, curves=False, model=None, steps=REFINE_STEPS):
-    """The whole chain for one graph. Returns a Drawing with its measures."""
+def draw(graph, method, size, radius, width, refine=True, curves=False, model=None, steps=REFINE_STEPS,
+         varied=False):
+    """The whole chain for one graph. Returns a Drawing with its measures.
+    varied: node radii by degree (degree_radii) instead of `radius` for every node."""
     seconds = {}
     t = time.perf_counter()
     start = start_drawing(graph, method, model)
     seconds["départ"] = time.perf_counter() - t
-    P = rescale_to_frame(start, size, radius)
-    g = anchor(with_style(graph, radius, width), P)  # stress at the scale of this drawing (see src/resolution.py)
+    radii = degree_radii(graph, radius) if varied else torch.full((graph.num_nodes,), float(radius))
+    margin = float(radii.max())
+    P = rescale_to_frame(start, size, margin)
+    g = with_style(graph, radius, width)
+    g.node_size = radii
+    g = anchor(g, P)  # stress at the scale of this drawing (see src/resolution.py)
     frames = [P.clone()]
     if refine and steps > 0:
         t = time.perf_counter()
         weights = balanced_weights(term_means([(P, g)], "screen", size), REFINE_FRACTION)
-        P, frames = refine_with_snapshots(P, g, size, make_loss("screen", weights), steps, REFINE_LR, radius)
+        P, frames = refine_with_snapshots(P, g, size, make_loss("screen", weights), steps, REFINE_LR, margin)
         seconds["affinage"] = time.perf_counter() - t
     offsets = torch.zeros(g.edge_index.shape[1], 2)
     if curves:
