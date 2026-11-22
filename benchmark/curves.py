@@ -33,9 +33,9 @@ MEASURES = {"ambiguous_edges": "Arêtes ambiguës / arête", "edge_overlap": "Ar
 
 def refined_drawings(starts, graphs, size, radius, width, chosen, device):
     """Our model's drawings, in the frame, refined with the screen loss chosen by the sweep for this setting."""
-    from resolution import make_loss, refine_all, rescale_to_frame, with_style
-    styled = [with_style(g, radius, width) for g in graphs]
+    from resolution import anchor, make_loss, refine_all, rescale_to_frame, with_style
     framed = [rescale_to_frame(p, size, radius) for p in starts]
+    styled = [anchor(with_style(g, radius, width), p) for g, p in zip(graphs, framed)]
     P = refine_all(framed, styled, size, make_loss("screen", chosen["weights"]), 25, chosen["lr"], radius, device)
     return list(zip(P, styled))
 
