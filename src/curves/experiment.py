@@ -1,4 +1,4 @@
-"""Curved edges vs straight edges, on settings where straight edges cannot avoid the nodes (benchmark/curves.py).
+"""Curved edges vs straight edges, on settings where straight edges cannot avoid the nodes (benchmark/curves_experiment.py).
 
 From the same refined drawing (nodes fixed), only the edges change: straight, or bent by optimize_curves.
 Curve-term weights: bend at 1, every other term at `fraction` / its mean value on the straight drawings

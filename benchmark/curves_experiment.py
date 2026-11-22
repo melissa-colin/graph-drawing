@@ -2,8 +2,8 @@
 setting (the refinement chosen by benchmark/resolution_sweep.py), the nodes stay where they are and only the
 edges change, straight or bent in screen space (src/curves). Measures on the rendered image.
 
-    python benchmark/curves.py run runs/model.pt [--workers 48] [--quick]
-    python benchmark/curves.py report
+    python benchmark/curves_experiment.py run runs/model.pt [--workers 48] [--quick]
+    python benchmark/curves_experiment.py report
 
 Needs benchmark/out/positions.pt (compare.py) and benchmark/out/resolution/{selection.json, val_starts.pt}
 (resolution_sweep.py run). Writes benchmark/out/curves/: rows.csv, selection.json, results_curves.md (means with
