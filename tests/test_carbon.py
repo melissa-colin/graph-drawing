@@ -64,3 +64,40 @@ def test_run_tracked_keeps_the_exit_code_and_the_row(tmp_path):
         run_tracked_main(["--out", str(out), str(script)])
     assert exit_info.value.code == 3
     assert [r["name"] for r in read_runs(out)] == ["job"]  # default name: the script name
+
+
+def test_visible_gpus(monkeypatch):
+    from tools.carbon import visible_gpus
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+    assert visible_gpus() is None  # not set: every GPU
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "1")
+    assert visible_gpus() == [1]
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0, 1")
+    assert visible_gpus() == [0, 1]
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "GPU-8f2a")
+    assert visible_gpus() == ["GPU-8f2a"]
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "")
+    assert visible_gpus() == []  # no GPU
+
+
+def test_track_passes_the_visible_gpus(tmp_path, monkeypatch):
+    seen = {}
+    import codecarbon
+
+    class Fake:
+        def __init__(self, **kwargs):
+            seen.update(kwargs)
+
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+    monkeypatch.setattr(codecarbon, "OfflineEmissionsTracker", Fake)
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "1")
+    with track("x", tmp_path / "e.csv"):
+        pass
+    assert seen["gpu_ids"] == [1]
+    with track("x", tmp_path / "e.csv", gpu_ids=None):
+        pass
+    assert seen["gpu_ids"] is None

@@ -14,19 +14,33 @@ To run an existing script under the tracker without editing it, see run_tracked.
 """
 import csv
 import logging
+import os
 from contextlib import contextmanager
 from pathlib import Path
 
 DEFAULT_CSV = Path("runs/emissions.csv")
 
 
+def visible_gpus():
+    """GPUs this process may use, from CUDA_VISIBLE_DEVICES (physical indices or UUIDs, as NVML numbers them):
+    None if the variable is not set (every GPU), [] if it is empty (no GPU)."""
+    value = os.environ.get("CUDA_VISIBLE_DEVICES")
+    if value is None:
+        return None
+    return [int(x) if x.strip().isdigit() else x.strip() for x in value.split(",") if x.strip()]
+
+
 @contextmanager
-def track(name, out=DEFAULT_CSV, tracking_mode="process", measure_power_secs=15, gpu_ids=None):
+def track(name, out=DEFAULT_CSV, tracking_mode="process", measure_power_secs=15, gpu_ids="visible"):
     """Measure the block and append one row named `name` to the CSV `out`, even if the block raises.
 
     Yields the codecarbon tracker. measure_power_secs: sampling period of the power (s).
-    gpu_ids: GPUs to measure (default: all those codecarbon sees).
+    gpu_ids: GPUs to measure; "visible" (default): those of CUDA_VISIBLE_DEVICES, every GPU if it is not set.
+    codecarbon measures every GPU of the machine otherwise, including GPUs used by other jobs or idle: on a
+    2-GPU server, a job on one GPU was charged the idle power of the other.
     """
+    if gpu_ids == "visible":
+        gpu_ids = visible_gpus()
     from codecarbon import OfflineEmissionsTracker  # imported here: only the measured runs need it
 
     out = Path(out)
