@@ -4,8 +4,8 @@ import torch
 
 from data.output import Layout
 from loss import Loss
-from resolution import (TERMS, balanced_weights, defect_score, evaluate, make_loss, refine_all,
-                        rescale_to_frame, scale_normalized_stress, term_means, with_style)
+from resolution import (TERMS, anchor, anchored_stress, balanced_weights, defect_score, evaluate, make_loss,
+                        refine_all, rescale_to_frame, scale_normalized_stress, term_means, with_style)
 from train import REFINE_WEIGHTS
 
 GRID = [(r * 4 + c, r * 4 + c + 1) for r in range(4) for c in range(3)] + \
@@ -36,13 +36,43 @@ def test_with_style_does_not_touch_the_original(make_graph):
 
 
 def test_screen_loss_matches_the_team_refinement_loss(make_graph):
-    """make_loss("screen", REFINE_WEIGHTS renamed) is exactly loss.Loss(REFINE_WEIGHTS)."""
+    """With the team's scale L, make_loss("screen", REFINE_WEIGHTS renamed) is exactly loss.Loss(REFINE_WEIGHTS):
+    same terms, and the anchored stress is the team's stress formula with another L."""
     torch.manual_seed(0)
     g = make_graph(GRID, node_size=4.0)
     layout = Layout(torch.rand(16, 2) * 60 + 4, 100, 100)
+    team_L = (100 - 2 * 4.0) / float(g.dist_value.max())  # metrics/stress._pixel_distances
+    g.stress_scale = torch.tensor([team_L])
     rename = {"edge_anlges": "angles", "edge_crossings": "crossings"}
     weights = {rename.get(k, k): v for k, v in REFINE_WEIGHTS.items() if k != "screen_fill"}
     assert float(make_loss("screen", weights)(layout, g)[0]) == pytest.approx(float(Loss(REFINE_WEIGHTS)(layout, g)[0]), rel=1e-6)
+
+
+def test_anchor_is_the_best_scale(make_graph):
+    g = make_graph(GRID)
+    P = torch.rand(16, 2, dtype=torch.float64) * 50
+    best = float(anchor(g, P).stress_scale)
+    layout = Layout(P, 100, 100)
+    def at(L):
+        g.stress_scale = torch.tensor([L])
+        return float(anchored_stress(layout, g))
+    assert at(best) < at(best * 1.01) and at(best) < at(best * 0.99)
+    with pytest.raises(ValueError):
+        anchored_stress(layout, make_graph(GRID, name="plain"))
+
+
+def test_anchored_stress_does_not_shrink_a_framed_drawing(make_graph):
+    """The team's pixel-scaled stress shrinks a grid put in the frame; the anchored one keeps its size."""
+    from metrics.stress import stress
+    from resolution import TermLoss
+    g = with_style(make_graph(GRID), 4.0, 1.0)
+    grid = torch.tensor([[c * 10.0, r * 10.0] for r in range(4) for c in range(4)])
+    P = rescale_to_frame(grid + torch.randn(16, 2) * 0.5, 120, 4.0)
+    span = lambda Q: float((Q.max(0).values - Q.min(0).values).max())
+    team = refine_all([P], [g], 120, TermLoss({"stress": stress}, {"stress": 1.0}), 50, 1.0, 4.0)[0]
+    ours = refine_all([P], [anchor(g, P)], 120, make_loss("screen", {"stress": 1.0}), 50, 1.0, 4.0)[0]
+    assert span(team) < 0.9 * span(P)  # shrunk by more than 10 %
+    assert span(ours) == pytest.approx(span(P), rel=0.03)
 
 
 def test_unknown_term_is_an_error():
@@ -62,8 +92,8 @@ def test_refinement_removes_the_defects_it_targets(make_graph, kind):
     """A crowded drawing at a small size: both refinements must lower their own defects and the image ones."""
     torch.manual_seed(0)
     size, radius = 100, 4.0
-    graphs = [with_style(make_graph(GRID, name=f"g{i}"), radius, 1.0) for i in range(2)]
-    starts = [rescale_to_frame(torch.rand(16, 2), 40, 0) + 30 for _ in graphs]  # in a 40 px square: overlaps
+    starts = [rescale_to_frame(torch.rand(16, 2), 40, 0) + 30 for _ in range(2)]  # in a 40 px square: overlaps
+    graphs = [anchor(with_style(make_graph(GRID, name=f"g{i}"), radius, 1.0), P) for i, P in enumerate(starts)]
     means = term_means(list(zip(starts, graphs)), kind, size)
     assert set(means) == set(TERMS[kind])
     loss_fn = make_loss(kind, balanced_weights(means, 0.3))
@@ -77,8 +107,8 @@ def test_refinement_removes_the_defects_it_targets(make_graph, kind):
 
 def test_refine_all_batches_like_one_by_one(make_graph):
     torch.manual_seed(0)
-    graphs = [with_style(make_graph(GRID, name=f"g{i}"), 3.0, 1.0) for i in range(3)]
-    starts = [torch.rand(16, 2) * 80 + 10 for _ in graphs]
+    starts = [torch.rand(16, 2) * 80 + 10 for _ in range(3)]
+    graphs = [anchor(with_style(make_graph(GRID, name=f"g{i}"), 3.0, 1.0), P) for i, P in enumerate(starts)]
     loss_fn = make_loss("geometric", balanced_weights(term_means(list(zip(starts, graphs)), "geometric", 100), 0.1))
     # metrics are means over the graphs of a batch: one batch of 3 = 3 graphs with a learning signal / 3,
     # Adam is invariant to that scale, so the results match up to floating-point noise

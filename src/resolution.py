@@ -9,8 +9,13 @@ refinement runs with geometric versions of its three screen terms (metrics/geome
 Pieces:
 - TermLoss / make_loss(kind, weights): the refinement loss of train.REFINE_WEIGHTS, with kind = "screen"
   (the team's SDF terms) or "geometric" (the control); stress, crossings and angles are shared.
+- anchored stress: the team's pixel-scaled stress (metrics/stress.py) imposes its own size, L pixels per edge
+  with L set by the graph diameter. A drawing put in the frame is usually larger: refining it with that stress
+  SHRINKS it (by 7 to 24 % on Rome-like graphs at 120 px, a grid the most), which brings the nodes closer and
+  creates the very pixel defects the refinement should remove. Here the same formula, with L the best scale of
+  the starting drawing (closed form, `anchor`): the stress keeps the shape without pulling on the size.
 - rescale_to_frame: any drawing into the frame, same treatment for every method.
-- with_style: a copy of a graph with another node radius and edge width.
+- with_style: a copy of a graph with another node radius and edge width; anchor: its stress scale.
 - balanced_weights: weight of each term = fraction / its mean value on the starting drawings (the rule used to
   choose train.PHASE_2_WEIGHTS, DeepGD's Adaptive Weight), recomputed for each setting.
 - refine_all: src/refine.refine on many graphs, by batches of graphs of the same setting.
@@ -27,10 +32,36 @@ from metrics.edge_angles import edge_angles
 from metrics.edge_crossings import count_crossings, edge_crossings
 from metrics.image_quality import image_quality
 from metrics.overlaps_vectorised import edge_node_overlaps, edge_overlaps, node_overlaps
-from metrics.stress import stress
+from metrics.batching import node_graph
 from refine import refine
 
-SHARED_TERMS = {"stress": stress, "angles": edge_angles, "crossings": edge_crossings}
+def anchored_stress(layout, graph):
+    """metrics/stress.stress (gamma = 2) with the scale L of each graph given by graph.stress_scale (see anchor)
+    instead of being set by the graph diameter: sum over pairs of (|p_u - p_v| - L d)^2 / (L d)^2.
+    graph can be a PyG batch (stress_scale then holds one value per graph): sum per graph, mean over graphs."""
+    if getattr(graph, "stress_scale", None) is None:
+        raise ValueError("anchored_stress needs graph.stress_scale: use resolution.anchor(graph, positions)")
+    pos = layout.positions
+    node_graph_index, num_graphs = node_graph(graph, pos.device)
+    i, j = graph.dist_index.to(pos.device)
+    Ld = graph.stress_scale.to(device=pos.device, dtype=pos.dtype).reshape(-1)[node_graph_index[i]] \
+        * graph.dist_value.to(device=pos.device, dtype=pos.dtype)
+    e = (pos[i] - pos[j]).norm(dim=1)
+    return ((e - Ld) ** 2 / Ld ** 2).sum() / num_graphs
+
+
+def anchor(graph, positions):
+    """Shallow copy of graph with stress_scale = the scale L that minimizes anchored_stress for these positions:
+    with x = e / d per pair, sum (x / L - 1)^2 is minimal for L = sum x^2 / sum x."""
+    i, j = graph.dist_index
+    x = (torch.as_tensor(positions, dtype=torch.float64)[i] - torch.as_tensor(positions, dtype=torch.float64)[j]).norm(dim=1) \
+        / graph.dist_value.double()
+    anchored = copy.copy(graph)
+    anchored.stress_scale = torch.tensor([float((x ** 2).sum() / x.sum().clamp_min(1e-12))])
+    return anchored
+
+
+SHARED_TERMS = {"stress": anchored_stress, "angles": edge_angles, "crossings": edge_crossings}
 SCREEN_TERMS = {"node_overlaps": node_overlaps, "edge_overlaps": edge_overlaps, "edge_node_overlaps": edge_node_overlaps}
 TERMS = {
     "screen": {**SHARED_TERMS, **SCREEN_TERMS},
@@ -192,7 +223,8 @@ def sweep_setting(size, radius, width, val, test, refined_starts, device="cpu", 
     selection[kind] = chosen parameters, weights and the validation scores of every candidate.
     """
     def prepare(drawings):
-        return [(rescale_to_frame(P, size, radius), with_style(g, radius, width)) for P, g in drawings]
+        framed = [(rescale_to_frame(P, size, radius), g) for P, g in drawings]
+        return [(P, anchor(with_style(g, radius, width), P)) for P, g in framed]
     val = {m: prepare(val[m]) for m in refined_starts}
     test = {m: prepare(d) for m, d in test.items()}
     val_starts = [d for m in refined_starts for d in val[m]]
