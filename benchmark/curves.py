@@ -42,6 +42,7 @@ def refined_drawings(starts, graphs, size, radius, width, chosen, device):
 
 def run(args):
     from curves.experiment import curves_setting
+    from resolution import make_pool
     from data.input import load_dataset, split_dataset
 
     OUT.mkdir(parents=True, exist_ok=True)
@@ -62,8 +63,7 @@ def run(args):
 
     rows_path = OUT / ("rows_quick.csv" if args.quick else "rows.csv")
     selection, writer = {}, None
-    with open(rows_path, "w", newline="") as f, \
-            multiprocessing.get_context("spawn").Pool(args.workers, initializer=torch.set_num_threads, initargs=(1,)) as pool:
+    with open(rows_path, "w", newline="") as f, make_pool(args.workers) as pool:
         for size, radius, width in settings:
             t = time.perf_counter()
             key = f"{size}px_r{radius:g}_w{width:g}"
