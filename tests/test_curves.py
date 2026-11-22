@@ -178,3 +178,25 @@ def test_bending_uncrosses_two_edges(make_graph):
     assert count_curve_crossings(layout, torch.zeros(2, 2), g) == 1
     _, off = optimize_curves(layout, g, {"curve_crossings": 1.0, "curve_bend": 1.0}, steps=200, lr=1.0)
     assert count_curve_crossings(layout, off, g) == 0
+
+
+def test_curves_setting_end_to_end(make_graph):
+    """Tiny experiment: straight drawings where edges cross nodes; curving must lower the ambiguity."""
+    from curves.experiment import curves_setting
+    from resolution import rescale_to_frame, with_style
+    torch.manual_seed(0)
+    edges = [(0, 1), (2, 3), (4, 5)]
+    def drawing(i):
+        g = with_style(make_graph(edges, name=f"c{i}"), 4.0, 1.0)
+        # each edge passes over the start of the next one
+        P = torch.tensor([[10., 40.], [70., 40.], [40., 41.], [40., 70.], [20., 69.], [65., 69.]]) + i
+        return rescale_to_frame(P, 80, 4.0), g
+    val, test = [drawing(0), drawing(1)], [drawing(2), drawing(3)]
+    rows, selection, offsets = curves_setting(80, val, test, fractions=(1.0,), learning_rates=(1.0,), steps=60,
+                                              batch_size=2)
+    straight = [r for r in rows if r["edges"] == "straight"]
+    curved = [r for r in rows if r["edges"] == "curved"]
+    assert len(straight) == len(curved) == 2 and len(offsets) == 2
+    assert sum(r["ambiguous_edges"] for r in curved) < sum(r["ambiguous_edges"] for r in straight)
+    assert all(r["bend"] == 0 for r in straight) and all(r["bend"] > 0 for r in curved)
+    assert selection["weights"]["curve_bend"] == 1.0
