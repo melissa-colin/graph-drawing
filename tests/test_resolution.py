@@ -8,6 +8,9 @@ from resolution import (TERMS, anchor, anchored_stress, balanced_weights, defect
                         refine_all, rescale_to_frame, scale_normalized_stress, term_means, with_style)
 from train import REFINE_WEIGHTS
 
+from pathlib import Path
+ROOT_SRC = Path(__file__).resolve().parent.parent / "src"
+
 GRID = [(r * 4 + c, r * 4 + c + 1) for r in range(4) for c in range(3)] + \
        [(r * 4 + c, (r + 1) * 4 + c) for r in range(3) for c in range(4)]
 
@@ -168,3 +171,32 @@ def test_evaluate_all_in_a_process_pool_matches_serial(make_graph):
         parallel = evaluate_all(jobs, 100, pool)
     assert parallel == evaluate_all(jobs, 100)
 
+
+
+def test_pool_survives_many_graphs_under_a_low_descriptor_limit(tmp_path):
+    """A sweep sends thousands of graphs to the workers: with torch's default sharing (one file descriptor
+    per tensor) the pool hung on "Too many open files" at 1024 descriptors. Run 400 evaluations in a child
+    process whose limit is 128 descriptors (the former pool fails there with "Too many open files": checked by
+    hand, see the commit)."""
+    import subprocess
+    import sys as _sys
+    script = tmp_path / "many.py"
+    script.write_text(f"""
+import resource, sys
+sys.path[:0] = [{str(ROOT_SRC)!r}]
+import torch
+from data.input import GraphInput
+from resolution import evaluate_all, make_pool, rescale_to_frame, with_style
+
+if __name__ == "__main__":  # spawn re-imports this file in every worker
+    resource.setrlimit(resource.RLIMIT_NOFILE, (128, resource.getrlimit(resource.RLIMIT_NOFILE)[1]))
+    dist = torch.tensor([[0, 1, 2], [1, 0, 1], [2, 1, 0]], dtype=torch.float32)
+    g = with_style(GraphInput(name="p", node_ids=["0", "1", "2"], edge_index=torch.tensor([[0, 1], [1, 2]]),
+                              x=torch.ones(3, 3), node_size=torch.full((3,), 3.0), dist=dist), 3.0, 1.0)
+    jobs = [(rescale_to_frame(torch.rand(3, 2), 60, 3), g) for _ in range(400)]
+    with make_pool(2) as pool:
+        print(len(evaluate_all(jobs, 60, pool)))
+""")
+    out = subprocess.run([_sys.executable, str(script)], capture_output=True, text=True, timeout=300)
+    assert out.returncode == 0, out.stderr[-2000:]
+    assert out.stdout.strip().endswith("400")

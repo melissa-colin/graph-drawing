@@ -77,7 +77,7 @@ def validation_starts(checkpoint, graphs, device):
 
 def run(args):
     from data.input import load_dataset, split_dataset
-    from resolution import FRACTIONS, LEARNING_RATES, STEPS, sweep_setting
+    from resolution import FRACTIONS, LEARNING_RATES, STEPS, make_pool, sweep_setting
 
     OUT.mkdir(parents=True, exist_ok=True)
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -102,7 +102,7 @@ def run(args):
           f"{len(settings)} settings | {len(fractions) * len(rates)} candidates per kind")
     rows_path, selection = OUT / ("rows_quick.csv" if args.quick else "rows.csv"), {}
     writer, rows_file = None, open(rows_path, "w", newline="")
-    with multiprocessing.get_context("spawn").Pool(args.workers, initializer=torch.set_num_threads, initargs=(1,)) as pool:
+    with make_pool(args.workers) as pool:
         for size, radius, width in settings:
             t = time.perf_counter()
             rows, chosen = sweep_setting(size, radius, width, val, test, REFINED, device, pool,

@@ -190,6 +190,20 @@ STEPS = 25  # the team's refinement budget (refine.STEPS), the same for every me
 STRESS_TOLERANCE = 1.05  # a refinement may cost at most 5 % of stress (the team's rule for PHASE_2_WEIGHTS)
 
 
+def _worker_init():
+    torch.set_num_threads(1)  # one process per core already
+    torch.multiprocessing.set_sharing_strategy("file_system")
+
+
+def make_pool(workers):
+    """Process pool for the image measures. Tensors sent to the workers are shared through files in shared
+    memory ("file_system") instead of one open file descriptor each (the default): a sweep sends thousands of
+    graphs, which exhausted the 1024 descriptors of a process and hung the pool."""
+    import multiprocessing
+    torch.multiprocessing.set_sharing_strategy("file_system")
+    return multiprocessing.get_context("spawn").Pool(workers, initializer=_worker_init)
+
+
 def evaluate_all(jobs, size, pool=None):
     """evaluate() on every (positions, graph) of jobs, in a process pool if given (image measures are numpy)."""
     args = [(P, g, size) for P, g in jobs]
