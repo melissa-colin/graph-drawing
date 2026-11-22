@@ -1,4 +1,4 @@
-"""benchmark/resolution.py report: tables, paired tests and figures from a synthetic rows.csv."""
+"""benchmark/resolution_sweep.py report: tables, paired tests and figures from a synthetic rows.csv."""
 import csv
 import importlib.util
 import random
@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def load_script():
-    spec = importlib.util.spec_from_file_location("resolution_script", ROOT / "benchmark" / "resolution.py")
+    spec = importlib.util.spec_from_file_location("resolution_sweep", ROOT / "benchmark" / "resolution_sweep.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

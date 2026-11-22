@@ -9,15 +9,15 @@ Methods, all put in the frame the same way (resolution.rescale_to_frame):
 For each setting and kind, the refinement weights and learning rate are chosen on VALIDATION graphs (rule
 resolution.choose, the same for both kinds); the test graphs are only measured.
 
-    python benchmark/resolution.py run runs/model.pt [--workers 48] [--val 200] [--quick]
-    python benchmark/resolution.py report
+    python benchmark/resolution_sweep.py run runs/model.pt [--workers 48] [--val 200] [--quick]
+    python benchmark/resolution_sweep.py report
 
 `run` needs benchmark/out/positions.pt (benchmark/compare.py: the test drawings of every method) and writes
 benchmark/out/resolution/: rows.csv (one line per test drawing and setting), selection.json, val_starts.pt.
 `report` reads them and writes results_resolution.md (means with 95 % bootstrap intervals, paired Wilcoxon
 tests screen vs geometric with Holm correction) and the figures *.png.
 Run it under the carbon tracker on deepeirb:
-    python src/tools/run_tracked.py --name resolution benchmark/resolution.py run runs/model.pt
+    python src/tools/run_tracked.py --name resolution benchmark/resolution_sweep.py run runs/model.pt
 """
 import argparse
 import csv

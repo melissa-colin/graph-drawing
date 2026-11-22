@@ -1,4 +1,4 @@
-"""Tools of the resolution sweep (benchmark/resolution.py): does optimizing in screen space pay off, and when?
+"""Tools of the resolution sweep (benchmark/resolution_sweep.py): does optimizing in screen space pay off, and when?
 
 Every drawing is put in a size x size frame with nodes of radius r and edges of width w, then measured on its
 rendered image (metrics/image_quality.py) and with the geometric measures (stress, crossings). Geometric
