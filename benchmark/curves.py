@@ -136,9 +136,9 @@ def defect_map(positions, offsets, graph, size):
 
 def sheet(suffix=""):
     """Three test graphs of the first setting: straight edges | curved edges, defects in red."""
-    from PIL import Image, ImageDraw
+    from PIL import Image, ImageDraw, ImageFont
     from curves.render import render_curved
-    from data.input import load_dataset
+    from data.input import load_graphml
     from data.raster import raster
     from resolution import with_style
 
@@ -148,13 +148,16 @@ def sheet(suffix=""):
     if not path.exists():
         return
     saved = torch.load(path)
-    graphs = load_dataset(DATA)
-    picks = sorted(range(len(saved["names"])), key=lambda i: graphs[saved["names"][i]].num_nodes)
-    picks = [picks[len(picks) // 4], picks[len(picks) // 2], picks[-1]]
-    scale, pad = 2, 12
+    by_size = sorted(range(len(saved["names"])), key=lambda i: len(saved["positions"][i]))
+    picks = [by_size[len(by_size) // 4], by_size[len(by_size) // 2], by_size[-1]]
+    scale, pad, top = 2, 12, 30
+    try:
+        font = ImageFont.truetype("DejaVuSans.ttf", 16)
+    except OSError:
+        font = ImageFont.load_default()
     tiles = []
     for i in picks:
-        g = with_style(graphs[saved["names"][i]], radius, width)
+        g = with_style(load_graphml(DATA / f"{saved['names'][i]}.graphml"), radius, width)
         P, off = saved["positions"][i], saved["offsets"][i]
         row = []
         for offsets in (torch.zeros_like(off), off):
@@ -162,14 +165,14 @@ def sheet(suffix=""):
             row.append(Image.fromarray(raster.to_uint8(img)).resize((size * scale, size * scale), Image.NEAREST))
         tiles.append(row)
     W = 2 * size * scale + 3 * pad
-    H = len(tiles) * (size * scale + pad) + pad + 24
+    H = len(tiles) * (size * scale + pad) + pad + top
     canvas = Image.new("RGB", (W, H), "#fcfcfb")
     draw = ImageDraw.Draw(canvas)
-    draw.text((pad, 6), "arêtes droites", fill="#0b0b0b")
-    draw.text((2 * pad + size * scale, 6), "arêtes courbes (mêmes nœuds)", fill="#0b0b0b")
+    draw.text((pad, 7), "arêtes droites", fill="#0b0b0b", font=font)
+    draw.text((2 * pad + size * scale, 7), "arêtes courbes (mêmes nœuds)", fill="#0b0b0b", font=font)
     for r, row in enumerate(tiles):
         for c, tile in enumerate(row):
-            canvas.paste(tile, (pad + c * (size * scale + pad), 24 + r * (size * scale + pad)))
+            canvas.paste(tile, (pad + c * (size * scale + pad), top + r * (size * scale + pad)))
     canvas.save(OUT / f"sheet{suffix}.png")
 
 
