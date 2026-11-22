@@ -168,3 +168,18 @@ def test_kamada_kawai_on_rome_at_500px(rome_dir):
         q = image_quality(X, g, 500, 500)
         assert q["hidden_nodes"] == 0
         assert q["node_visibility"] > 0.99
+
+
+# --- defect mask --------------------------------------------------------------------------------------------
+def test_defect_mask_marks_exactly_the_counted_defects(make_graph):
+    from metrics.image_quality import defect_mask
+    g = make_graph([(0, 1)], n=5, node_size=3.0)
+    clean = P([10, 10], [30, 10], [60, 60], [10, 60], [40, 40])
+    assert defect_mask(clean, g, W, H).sum() == 0
+    # node 2 on edge (0, 1); nodes 3 and 4 merged
+    bad = P([10, 10], [30, 10], [20, 10], [10, 60], [16.2, 60])  # 0.2 px between nodes 3 and 4
+    mask = defect_mask(bad, g, W, H)
+    assert mask[10, 20] == 1  # where the edge crosses node 2
+    assert image_quality(bad, g, W, H)["merged_nodes"] == pytest.approx(1 / 5)
+    assert mask[60, 10] == 1 and mask[60, 16] == 1  # the merged blob
+    assert mask[40, 40] == 0 and mask[10, 30] == 0  # elsewhere: clean (node 1 is an end of the edge)

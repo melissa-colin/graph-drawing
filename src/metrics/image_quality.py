@@ -129,8 +129,9 @@ def _ink(pixels, coverage, size):
     return -np.expm1(log_clear), log_clear
 
 
-def _pairs_sharing_pixels(pix_a, own_a, pix_b, own_b):
-    """Unique pairs (owner a, owner b) that have at least one pixel in common."""
+def _pairs_sharing_pixels(pix_a, own_a, pix_b, own_b, with_pixels=False):
+    """Unique pairs (owner a, owner b) that have at least one pixel in common. with_pixels: also return every
+    (owner a, owner b, pixel) triple, not deduplicated."""
     order = np.argsort(pix_b, kind="stable")
     pix_b, own_b = pix_b[order], own_b[order]
     lo, hi = np.searchsorted(pix_b, pix_a, "left"), np.searchsorted(pix_b, pix_a, "right")
@@ -138,7 +139,53 @@ def _pairs_sharing_pixels(pix_a, own_a, pix_b, own_b):
     a = np.repeat(own_a, count)
     start = np.repeat(lo - np.cumsum(count) + count, count)  # index in pix_b of each repeated match
     b = own_b[start + np.arange(count.sum())]
-    return np.unique(np.stack((a, b), axis=1), axis=0) if len(a) else np.empty((0, 2), np.int64)
+    pairs = np.unique(np.stack((a, b), axis=1), axis=0) if len(a) else np.empty((0, 2), np.int64)
+    if with_pixels:
+        return pairs, np.stack((a, b, np.repeat(pix_a, count)), axis=1)
+    return pairs
+
+
+def _analyze(positions, graph, width, height, edges, threshold):
+    """Everything the measures and the defect mask need, computed once."""
+    size = width * height
+    nodes, straight = elements(positions, graph, width, height)
+    edges = straight if edges is None else edges
+    radius = _numpy(graph.node_size).reshape(-1)
+    n_pix, n_cov, n_own = _stack(nodes)
+    e_pix, e_cov, e_own = _stack(edges)
+    a = dict(size=size, nodes=nodes, edges=edges, n=len(nodes), m=len(edges),
+             n_pix=n_pix, n_cov=n_cov, n_own=n_own, e_pix=e_pix, e_cov=e_cov, e_own=e_own)
+
+    # visibility: part of each disk inside the frame and not covered by the OTHER nodes
+    node_ink, log_clear = _ink(n_pix, n_cov, size)
+    own_clear = np.log1p(-np.minimum(n_cov, 1 - 1e-9))
+    others_clear = np.exp(log_clear[n_pix] - own_clear)  # prod over j != k of (1 - c_j)
+    visible = np.bincount(n_own, weights=n_cov * others_clear, minlength=len(nodes)) / (math.pi * radius ** 2)
+    a["node_ink"], a["visible"] = node_ink, np.clip(visible, 0.0, 1.0)
+
+    # merged nodes: connected blobs of node ink; each node belongs to the blob of its most covered pixel
+    labels, _ = ndimage.label((node_ink >= 0.5).reshape(height, width), structure=np.ones((3, 3)))
+    labels = labels.reshape(-1)
+    node_blob = np.zeros(len(nodes), np.int64)
+    for k, e in enumerate(nodes):
+        if len(e.pixels):
+            node_blob[k] = labels[e.pixels[np.argmax(e.coverage)]]
+    a["labels"], a["node_blob"] = labels, node_blob
+
+    # ambiguous edges: an edge and a node that is not one of its ends share a pixel
+    ends = _numpy(graph.edge_index).T.astype(int)
+    tn, te = n_cov > threshold, e_cov > threshold
+    pairs, triples = _pairs_sharing_pixels(e_pix[te], e_own[te], n_pix[tn], n_own[tn], with_pixels=True)
+    if len(pairs):
+        pairs = pairs[~((ends[pairs[:, 0], 0] == pairs[:, 1]) | (ends[pairs[:, 0], 1] == pairs[:, 1]))]
+        triples = triples[~((ends[triples[:, 0], 0] == triples[:, 1]) | (ends[triples[:, 0], 1] == triples[:, 1]))]
+    a["ambiguous_pairs"], a["ambiguous_pixels"] = pairs, np.unique(triples[:, 2]) if len(triples) else triples[:, 2]
+
+    # edge overlap: edge ink outside the nodes, covered by two edges or more
+    edge_count = np.bincount(e_pix[te], minlength=size)
+    a["edge_ink"] = (edge_count > 0) & (node_ink <= threshold)
+    a["edge_shared"] = (edge_count >= 2) & a["edge_ink"]
+    return a
 
 
 def image_quality(positions, graph, width, height, edges=None, threshold=0.1, window=16):
@@ -148,57 +195,41 @@ def image_quality(positions, graph, width, height, edges=None, threshold=0.1, wi
     edges: list of Element, one per edge of graph.edge_index (e.g. curved edges); straight edges if None.
     threshold: coverage above which a pixel counts as touched by an element (ambiguity, overlaps).
     """
-    size = width * height
-    nodes, straight = elements(positions, graph, width, height)
-    edges = straight if edges is None else edges
-    radius = _numpy(graph.node_size).reshape(-1)
-    n, m = len(nodes), len(edges)
-    n_pix, n_cov, n_own = _stack(nodes)
-    e_pix, e_cov, e_own = _stack(edges)
-
-    # visibility: part of each disk inside the frame and not covered by the OTHER nodes
-    node_ink, log_clear = _ink(n_pix, n_cov, size)
-    own_clear = np.log1p(-np.minimum(n_cov, 1 - 1e-9))
-    others_clear = np.exp(log_clear[n_pix] - own_clear)  # prod over j != k of (1 - c_j)
-    visible = np.bincount(n_own, weights=n_cov * others_clear, minlength=n) / (math.pi * radius ** 2)
-    visible = np.clip(visible, 0.0, 1.0)
-
-    # merged nodes: connected blobs of node ink; each node belongs to the blob of its most covered pixel
-    labels, _ = ndimage.label((node_ink >= 0.5).reshape(height, width), structure=np.ones((3, 3)))
-    labels = labels.reshape(-1)
-    node_blob = np.zeros(n, np.int64)
-    for k, e in enumerate(nodes):
-        if len(e.pixels):
-            node_blob[k] = labels[e.pixels[np.argmax(e.coverage)]]
-    seen = node_blob[node_blob > 0]
+    a = _analyze(positions, graph, width, height, edges, threshold)
+    n, m, visible = a["n"], a["m"], a["visible"]
+    seen = a["node_blob"][a["node_blob"] > 0]
     merged = len(seen) - len(np.unique(seen))
 
-    # ambiguous edges: an edge and a node that is not one of its ends share a pixel
-    ends = _numpy(graph.edge_index).T.astype(int)
-    tn, te = n_cov > threshold, e_cov > threshold
-    pairs = _pairs_sharing_pixels(e_pix[te], e_own[te], n_pix[tn], n_own[tn])
-    if len(pairs):
-        incident = (ends[pairs[:, 0], 0] == pairs[:, 1]) | (ends[pairs[:, 0], 1] == pairs[:, 1])
-        pairs = pairs[~incident]
-
-    # edge overlap: edge ink outside the nodes, covered by two edges or more
-    edge_count = np.bincount(e_pix[te], minlength=size)
-    edge_ink = (edge_count > 0) & (node_ink <= threshold)
-    edge_overlap = float(((edge_count >= 2) & edge_ink).sum() / max(edge_ink.sum(), 1))
-
     # clutter: union of all the ink, globally and in the densest window
-    all_ink, _ = _ink(np.concatenate((n_pix, e_pix)), np.concatenate((n_cov, e_cov)), size)
+    all_ink, _ = _ink(np.concatenate((a["n_pix"], a["e_pix"])), np.concatenate((a["n_cov"], a["e_cov"])), a["size"])
     local = ndimage.uniform_filter(all_ink.reshape(height, width), size=min(window, width, height), mode="constant")
 
     return {
         "node_visibility": float(visible.mean()) if n else 1.0,
         "hidden_nodes": float((visible < 0.5).mean()) if n else 0.0,
         "merged_nodes": merged / max(n, 1),
-        "ambiguous_edges": len(pairs) / max(m, 1),
-        "edge_overlap": edge_overlap,
+        "ambiguous_edges": len(a["ambiguous_pairs"]) / max(m, 1),
+        "edge_overlap": float(a["edge_shared"].sum() / max(a["edge_ink"].sum(), 1)),
         "ink_density": float(all_ink.mean()),
         "ink_peak": float(local.max()),
     }
+
+
+def defect_mask(positions, graph, width, height, edges=None, threshold=0.1):
+    """(H, W) map in [0, 1] of the pixels behind the defects that image_quality counts: nodes less than half
+    visible, blobs of node ink holding two nodes or more, pixels shared by an edge and a node it does not
+    connect. To paint over the drawing (the demo, the sheets)."""
+    a = _analyze(positions, graph, width, height, edges, threshold)
+    mask = np.zeros(a["size"])
+    for k, e in enumerate(a["nodes"]):
+        if a["visible"][k] < 0.5:
+            mask[e.pixels] = np.maximum(mask[e.pixels], e.coverage)
+    blobs, counts = np.unique(a["node_blob"][a["node_blob"] > 0], return_counts=True)
+    shared = blobs[counts >= 2]
+    if len(shared):
+        mask[np.isin(a["labels"], shared)] = 1.0
+    mask[a["ambiguous_pixels"]] = 1.0
+    return mask.reshape(height, width)
 
 
 IMAGE_MEASURES = {  # name: True if higher is better, None if descriptive (no better direction)

@@ -21,7 +21,6 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "src"))
 
-import numpy as np  # noqa: E402
 import torch  # noqa: E402
 
 OUT = HERE / "out" / "curves"
@@ -127,23 +126,12 @@ def report(args):
 
 
 def defect_map(positions, offsets, graph, size):
-    """(size, size) map of the pixels of an edge that touch a node it does not connect (for the sheet)."""
-    from curves.render import curve_elements
-    from metrics.image_quality import elements
-    nodes, _ = elements(positions, graph, size, size)
-    curves = curve_elements(positions, offsets, graph, size, size)
-    owner = {}
-    for k, e in enumerate(nodes):
-        for p in e.pixels[e.coverage > 0.1]:
-            owner.setdefault(int(p), set()).add(k)
-    ends = graph.edge_index.t().tolist()
-    hit = np.zeros(size * size)
-    for (u, v), e in zip(ends, curves):
-        for p, c in zip(e.pixels, e.coverage):
-            if c > 0.1 and owner.get(int(p), set()) - {u, v}:
-                hit[p] = 1.0
+    """(size, size) map of the image defects (metrics/image_quality.defect_mask), grown by 2 px to be seen."""
     from scipy import ndimage
-    return ndimage.binary_dilation(hit.reshape(size, size), iterations=2).astype(float)
+    from curves.render import curve_elements
+    from metrics.image_quality import defect_mask
+    mask = defect_mask(positions, graph, size, size, edges=curve_elements(positions, offsets, graph, size, size))
+    return ndimage.binary_dilation(mask > 0, iterations=2).astype(float)
 
 
 def sheet(suffix=""):
