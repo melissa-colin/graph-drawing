@@ -8,7 +8,6 @@ import torch.nn as nn
 from data.input import GraphInput
 from data.output import Layout
 
-from metrics.screen_fill import screen_fill
 from metrics.stress import scaled_stress, stress
 from metrics.overlaps_vectorised import node_overlaps, edge_overlaps, edge_node_overlaps
 from metrics.edge_crossings import edge_crossings
@@ -32,7 +31,6 @@ class Loss(nn.Module):
         metrics_values = {}
 
         metrics = {
-            "screen_fill": screen_fill,
             "stress": stress,
             "scaled_stress": scaled_stress,
             "node_overlaps": node_overlaps,

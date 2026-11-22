@@ -197,8 +197,9 @@ def main(
 # Test (1000 graphs) vs phase 1 continued alone: stress +3.8 %, crossings -5 %, overlapping nodes -64 %,
 # edges over nodes -15 %, better angles. Heavier weights (10 %, 30 %, 100 %) or all metrics from the
 # start degrade the stress much more (from scratch at 100 %: stress x3, 2.4x more crossings).
-# screen_fill stays at 0: the pixel-scaled stress already fills the frame, and screen_fill only pulls on
-# the nodes at the border of the drawing, which stretched the drawings.
+# No screen-filling term (2 - dx/W - dy/H, tried then removed): the pixel-scaled stress already sets the size
+# of the drawing. Validation, 3 seeds, fine-tuning with it at 3 %: same stress (0.0612), same size (457 px),
+# crossings 28.6 vs 28.9 but not on every seed (noise).
 PHASE_1_WEIGHTS = {"stress": 1}
 # Phase 2 uses BOTH stresses. The scale-normalized one (shape only, at the best scale: what the benchmark
 # measures, and what CoRe-GD trains on) improves the shape; the pixel-scaled one keeps the size. With the
@@ -210,7 +211,6 @@ PHASE_1_WEIGHTS = {"stress": 1}
 PHASE_2_WEIGHTS = {
     "stress": 1,
     "scaled_stress": 1,
-    "screen_fill": 0,
     "node_overlaps": 0.334,
     "edge_overlaps": 0.0518,
     "edge_anlges": 10.6,

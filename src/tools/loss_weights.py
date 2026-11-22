@@ -51,13 +51,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # src/
 
 from data.input import load_dataset, split_dataset
 from data.output import Layout
-from loss import edge_angles, edge_overlaps, node_overlaps, screen_fill, stress
+from loss import edge_angles, edge_overlaps, node_overlaps, stress
 from model import LayoutModel
 from train import batch_loss, train_step
 
 # Same keys as the metrics dict of Loss.forward, so the printed weights can be pasted into Loss(weights=...).
 METRICS = {
-    "screen_fill": screen_fill,
     "stress": stress,
     "node_overlaps": node_overlaps,
     "edge_overlaps": edge_overlaps,
