@@ -30,6 +30,8 @@ Sujet complet : [`docs/sujet.pdf`](docs/sujet.pdf).
 | Journal des séances, questions, idées, décisions, impact env. | [`docs/notes.md`](docs/notes.md) |
 | Propositions détaillées (PDF + source LaTeX) | [`docs/idees/`](docs/idees/) |
 | Code (lancer depuis la racine : `python src/train.py`) | `src/` |
+| Test du pipeline (`python -m pytest -q`) | `tests/` |
+| Mesure énergie et CO₂ (`with track("nom"):` ou `codecarbon monitor --offline --country-iso-code FRA --no-api -- python src/train.py`) | `src/tools/carbon.py` |
 
 ## Installation
 
