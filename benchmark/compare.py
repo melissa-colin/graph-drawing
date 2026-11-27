@@ -39,7 +39,7 @@ tc.knn = knn
 sys.modules["torch_cluster"] = tc
 sys.path[:0] = [str(EXT / "CoRe-GD"), str(EXT / "deepgd"), str(HERE.parent / "src"), str(HERE)]
 
-from data.input import load_dataset, split_dataset
+from data.input import graph_input, load_dataset, split_dataset
 from infer import load_model
 from neuraldrawer.network.model import get_model
 from neuraldrawer.network.preprocessing import preprocess_dataset
@@ -87,8 +87,10 @@ from refine import ROUNDS, STEPS, draw
 from train import REFINE_WEIGHTS
 refine_loss = Loss(weights=REFINE_WEIGHTS)
 def ours_pos(g, steps=0):
-    """Our model with ROUNDS rounds, then `steps` refinement steps on the positions (src/refine.py)."""
-    h = g.clone()
+    """Our model with ROUNDS rounds, then `steps` refinement steps on the positions (src/refine.py).
+    Preprocessing included, as for the other methods: features from the bare graph (degree, Laplacian
+    eigenvectors, noise), plus the graph distances when refining (the stress of the refinement needs them)."""
+    h = graph_input(nxg(g), g.name, pe_dim=g.pe_dim, distances=steps > 0)
     if h.x.shape[1] == cfg["in_features"] + 1:  # checkpoints from before the noise column
         h.x = h.x[:, 1:]
     return draw(ours, h.to(dev), refine_loss, ROUNDS, steps).positions.cpu()

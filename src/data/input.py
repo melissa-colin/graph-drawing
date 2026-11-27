@@ -153,28 +153,35 @@ def load_graphml(path, node_size=4.0, edge_width=1.0, pe_dim=8):
     - edge_width : l'épaisseur des arêtes en pixels
     - pe_dim : le nombre de colonnes d'encodage de position à la fin de x (0 si aucun)
     """
-    graph = nx.read_graphml(path)
+    return graph_input(nx.read_graphml(path), path.stem, node_size, edge_width, pe_dim)
+
+
+def graph_input(graph, name, node_size=4.0, edge_width=1.0, pe_dim=8, distances=True):
+    """The preprocessing of load_graphml, from a networkx graph already in memory.
+    distances=False skips the shortest paths (O(N^3)): the model does not use them, only the loss
+    (training, refinement) does. The benchmark uses it to time our preprocessing like the others'."""
     node_ids = [str(node) for node in graph.nodes()]
-    node_index = {node_id: i for i, node_id in enumerate(node_ids)}
+    node_index = {node_id: i for i, node_id in enumerate(graph.nodes())}
     edges = [(node_index[u], node_index[v]) for u, v in graph.edges()]
     edge_index = torch.tensor(edges, dtype=torch.long).t() if edges else torch.empty((2, 0), dtype=torch.long)
     # Column 0 is random noise (see redraw_noise), seeded by the graph name so that evaluation is reproducible.
-    generator = torch.Generator().manual_seed(zlib.crc32(path.stem.encode()))
+    generator = torch.Generator().manual_seed(zlib.crc32(name.encode()))
     features = torch.column_stack((
         torch.rand(len(node_ids), generator=generator),
-        torch.tensor([graph.degree(node) for node in node_ids], dtype=torch.float32),
+        torch.tensor([graph.degree(node) for node in graph.nodes()], dtype=torch.float32),
         torch.ones(len(node_ids), dtype=torch.float32),
     ))
-    distances = torch.from_numpy(nx.floyd_warshall_numpy(graph, nodelist=node_ids).astype("float32"))
+    dist = torch.from_numpy(nx.floyd_warshall_numpy(graph, nodelist=list(graph.nodes())).astype("float32")) \
+        if distances else None
     if pe_dim > 0:  # last, flip_pe_signs works on the last pe_dim columns
-        features = torch.cat((features, laplacian_pe(graph, node_ids, pe_dim)), dim=1)
+        features = torch.cat((features, laplacian_pe(graph, list(graph.nodes()), pe_dim)), dim=1)
     return GraphInput(
-        name=path.stem,
+        name=name,
         node_ids=node_ids,
         edge_index=edge_index,
         x=features,
         node_size=torch.full((len(node_ids),), float(node_size), dtype=torch.float32),
-        dist=distances,
+        dist=dist,
         edge_width=float(edge_width),
         pe_dim=pe_dim,
     )
