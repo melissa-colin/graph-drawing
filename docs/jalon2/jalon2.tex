@@ -134,7 +134,7 @@ Même découpage que CoRe-GD et DeepGD : 10\,000 entraînement, 1\,000 test, 531
 \section{Méthode}
 
 %---------------------------------------------------------------------
-\begin{frame}{Notre idée : un réseau qui place les nœuds directement en pixels}
+\begin{frame}[c]{Notre idée : un réseau qui place les nœuds directement en pixels}
 \centering
 \begin{tikzpicture}[node distance=0.32cm]
   \node[carte] (g) {\textbf{Graphe}\\\scriptsize nœuds, arêtes, tailles};
@@ -150,16 +150,6 @@ Même découpage que CoRe-GD et DeepGD : 10\,000 entraînement, 1\,000 test, 531
   \draw[-{Stealth[length=2.5mm]},thick,orange,dashed] (cout.south) -- ++(0,-0.55) -| node[pos=0.25,below,font=\scriptsize]{le gradient remonte jusqu'aux poids du modèle} (gnn.south);
 \end{tikzpicture}
 
-\vspace{0.25cm}
-\begin{minipage}{0.86\textwidth}
-\small Les trois axes du sujet, et où nous en sommes :
-\begin{itemize}
-\setlength{\itemsep}{2pt}
-\item des coûts calculés à l'écran : en cours, c'est notre loss ;
-\item l'optimisation directe, graphe par graphe : utilisée pour affiner le dessin du modèle ;
-\item un modèle appris sur la base Rome : notre point de départ, sans dessins de référence puisque la loss note le dessin produit.
-\end{itemize}
-\end{minipage}
 \end{frame}
 
 %---------------------------------------------------------------------
@@ -286,7 +276,7 @@ Dessins provisoires d'un graphe de 41 nœuds jamais vu à l'entraînement.
 %--- Stress
 \begin{column}{0.32\textwidth}
 \centering
-\textbf{Stress}\\[4pt]
+\textbf{Stress en pixels}\\[4pt]
 \begin{tikzpicture}[scale=0.85,nd/.style={circle,fill=bleu,inner sep=1.6pt}]
   \node[nd,label={[font=\scriptsize]left:$u$}] (u) at (0,0) {};
   \node[nd] (a) at (0.7,1.1) {};
@@ -300,26 +290,26 @@ Dessins provisoires d'un graphe de 41 nœuds jamais vu à l'entraînement.
 \scriptsize $\displaystyle\sum_{u<v} \frac{(\|p_u - p_v\| - L\,d_{uv})^2}{(L\,d_{uv})^2}$\\[4pt]
 \textcolor{gris}{respecter la structure du graphe}
 \end{column}
-%--- Screen
+%--- Scaled stress
 \begin{column}{0.32\textwidth}
 \centering
-\textbf{Écran}\\[4pt]
-\begin{tikzpicture}[scale=0.85]
-  \draw[nuit,thick] (0,0) rectangle (2.8,1.8);
-  \foreach \p in {(0.9,0.6),(1.2,1.0),(1.5,0.7),(1.7,1.15),(1.95,0.55),(1.1,0.45)} \fill[bleu] \p circle (1.6pt);
-  \draw[bleu,dashed] (0.9,0.45) rectangle (1.95,1.15);
-  \draw[orange,{Stealth[length=1.5mm]}-{Stealth[length=1.5mm]}] (0,0.25) -- (0.9,0.25);
-  \draw[orange,{Stealth[length=1.5mm]}-{Stealth[length=1.5mm]}] (1.95,0.25) -- (2.8,0.25);
-  \draw[orange,{Stealth[length=1.5mm]}-{Stealth[length=1.5mm]}] (2.4,1.15) -- (2.4,1.8);
-  \node[font=\scriptsize,gris] at (1.4,-0.25) {cadre $W \times H$};
+\textbf{Stress à l'échelle optimale}\\[4pt]
+\begin{tikzpicture}[scale=0.85,nd/.style={circle,fill=bleu,inner sep=1.4pt}]
+  \foreach \s/\x in {0.55/0, 1/1.35} {
+    \begin{scope}[shift={(\x,0.15)},scale=\s]
+      \node[nd] (p) at (0,0) {}; \node[nd] (q) at (1.2,0.1) {}; \node[nd] (r) at (0.5,1.3) {};
+      \draw[gris,thick] (p) -- (q) -- (r) -- (p);
+    \end{scope}}
+  \node[font=\small,orange] at (1.0,0.6) {$=$};
+  \node[font=\scriptsize,gris] at (1.2,-0.25) {même forme, même valeur};
 \end{tikzpicture}\\[4pt]
-\scriptsize $\displaystyle 2 - \frac{\Delta x}{W} - \frac{\Delta y}{H}$\\[4pt]
-\textcolor{gris}{occuper tout le cadre (inspirée de l'aspect ratio)}
+\scriptsize $\displaystyle\min_{s}\ \sum_{u<v} \frac{(s\,\|p_u - p_v\| - d_{uv})^2}{d_{uv}^2}$\\[4pt]
+\textcolor{gris}{ne juge que la forme ; c'est la mesure du benchmark (fine-tuning)}
 \end{column}
 %--- Node overlaps
 \begin{column}{0.32\textwidth}
 \centering
-\textbf{Chevauchement}\\[4pt]
+\textbf{Chevauchement des nœuds}\\[4pt]
 \begin{tikzpicture}[scale=0.85]
   \fill[bleuclair] (0.6,0.6) rectangle ++(0.2,0.2);
   \fill[bleuclair] (0.6,0.8) rectangle ++(0.2,0.2);
@@ -385,16 +375,17 @@ Dessins provisoires d'un graphe de 41 nœuds jamais vu à l'entraînement.
 \end{columns}
 
 \vspace{0.35cm}
-\centering\scriptsize\textcolor{gris}{Le stress est mis à l'échelle des pixels : une arête vaut $L$ pixels, avec $L$ choisi pour que le dessin idéal remplisse le cadre.}
+\centering\scriptsize\textcolor{gris}{Stress en pixels : une arête vaut $L$ pixels, avec $L$ choisi pour que le dessin idéal remplisse le cadre ; il fixe donc aussi la taille du dessin.}\\
+\scriptsize\textcolor{gris}{Essayé puis retiré : un terme « écran » ($2 - \Delta x / W - \Delta y / H$) pour remplir le cadre. Il étirait les dessins, et le stress en pixels remplit déjà le cadre.}
 \end{frame}
 
 %---------------------------------------------------------------------
 \begin{frame}{La loss : les métriques pour les arêtes}
 \begin{columns}[T]
-\begin{column}{0.45\textwidth}
+\begin{column}{0.24\textwidth}
 \centering
-\textbf{Chevauchement des arêtes}\\[6pt]
-\begin{tikzpicture}[scale=0.9]
+\textbf{Arêtes superposées}\\[6pt]
+\begin{tikzpicture}[scale=0.62]
   \begin{scope}
     \clip (0.15,0.2) -- (2.85,1.4) -- (2.75,1.62) -- (0.05,0.42) -- cycle;
     \fill[orange] (0.3,1.55) -- (2.7,0.25) -- (2.82,0.47) -- (0.42,1.77) -- cycle;
@@ -406,13 +397,13 @@ Dessins provisoires d'un graphe de 41 nœuds jamais vu à l'entraînement.
     \fill[orange] (0.3,1.55) -- (2.7,0.25) -- (2.82,0.47) -- (0.42,1.77) -- cycle;
   \end{scope}
 \end{tikzpicture}\\[6pt]
-\footnotesize Pénalise la zone où deux arêtes épaisses se recouvrent, avec des SDF.\\
-\textcolor{gris}{ne décroise pas à elle seule : la zone est la même où que soit le croisement}
+\scriptsize Aire où deux arêtes épaisses se recouvrent (SDF).\\[2pt]
+\textcolor{gris}{écarte les arêtes collées, mais ne décroise pas}
 \end{column}
-\begin{column}{0.45\textwidth}
+\begin{column}{0.24\textwidth}
 \centering
-\textbf{Angles entre arêtes}\\[6pt]
-\begin{tikzpicture}[scale=0.9]
+\textbf{Angles}\\[6pt]
+\begin{tikzpicture}[scale=0.62]
   \coordinate (o) at (1.2,0.5);
   \draw[gris,thick] (o) -- ++(15:1.5);
   \draw[gris,thick] (o) -- ++(40:1.5);
@@ -421,13 +412,40 @@ Dessins provisoires d'un graphe de 41 nœuds jamais vu à l'entraînement.
   \node[font=\scriptsize,orange] at ($(o)+(27:1.95)$) {$\theta_{\min}$};
   \fill[bleu] (o) circle (2.2pt);
 \end{tikzpicture}\\[6pt]
-\footnotesize Éviter les angles trop petits entre arêtes d'un même nœud.\\
-\textcolor{gris}{plus petit angle de chaque nœud comparé à $2\pi / \deg(v)$ (Purchase)}
+\scriptsize Plus petit angle de chaque nœud, comparé à $2\pi / \deg(v)$ (Purchase).\\[2pt]
+\textcolor{gris}{écarte les arêtes d'un même nœud}
+\end{column}
+\begin{column}{0.24\textwidth}
+\centering
+\textbf{Croisements}\\[6pt]
+\begin{tikzpicture}[scale=0.62,nd/.style={circle,fill=bleu,inner sep=1.4pt}]
+  \node[nd] (a) at (0,0.2) {}; \node[nd] (b) at (2.6,1.5) {};
+  \node[nd] (c) at (0.4,1.6) {}; \node[nd] (d) at (1.9,0.65) {};
+  \draw[gris,thick] (a) -- (b); \draw[gris,thick] (c) -- (d);
+  \draw[orange,thick,-{Stealth[length=1.5mm]}] (d) -- (2.15,0.15);
+  \node[font=\scriptsize,orange] at (2.75,0.25) {$\delta$};
+\end{tikzpicture}\\[6pt]
+\scriptsize Pour chaque paire qui se croise, le plus petit déplacement $\delta$ d'une extrémité qui la décroise.\\[2pt]
+\textcolor{gris}{décroise vraiment}
+\end{column}
+\begin{column}{0.24\textwidth}
+\centering
+\textbf{Arête sur un nœud}\\[6pt]
+\begin{tikzpicture}[scale=0.62,nd/.style={circle,fill=bleu,inner sep=1.4pt}]
+  \node[nd] (a) at (0,0.3) {}; \node[nd] (b) at (2.8,1.4) {};
+  \draw[gris,thick] (a) -- (b);
+  \fill[bleuclair] (1.45,0.9) circle (0.28);
+  \begin{scope}\clip (1.45,0.9) circle (0.28); \draw[orange,line width=2.2pt] (a) -- (b); \end{scope}
+  \draw[bleu,thick] (1.45,0.9) circle (0.28);
+  \node[font=\scriptsize,gris] at (1.4,0.0) {nœud non relié};
+\end{tikzpicture}\\[6pt]
+\scriptsize Aire où une arête recouvre un nœud qu'elle ne relie pas (SDF).\\[2pt]
+\textcolor{gris}{sinon, l'arête fait croire qu'elle y est reliée}
 \end{column}
 \end{columns}
 
 \vspace{0.4cm}
-\centering\footnotesize Ajoutés ensuite : \textbf{croisements} (pour chaque paire qui se croise, le plus petit déplacement d'une extrémité qui la décroise) et \textbf{arête sur un nœud} (une arête qui passe sur un nœud qu'elle ne relie pas, avec des SDF).
+\centering\scriptsize\textcolor{gris}{Toutes en pixels, différentiables. Les poids sont donnés plus loin (« La loss finale : les coefficients »).}
 \end{frame}
 
 %---------------------------------------------------------------------
@@ -486,10 +504,9 @@ Arête sur un nœud & 0 & 0,0646 & 0,0646 & 2,15 \\
 \footnotesize
 \begin{itemize}
 \setlength{\itemsep}{1pt}
-\item \textbf{Poids équilibré} = 1 / valeur moyenne du terme sur les dessins de l'étape 1 (\emph{Adaptive Weight} de DeepGD) : avec ce poids, chaque terme pèserait autant que le stress.
-\item \textbf{Coefficient = 3\,\% du poids équilibré}, donc chaque métrique écran pèse environ 3\,\% du stress. Les écarts entre coefficients (0,013 à 10,6) viennent seulement des unités : un angle vaut moins de 1, un croisement se compte en pixels.
-\item \textbf{Pourquoi 3\,\%} : le plus fort dosage qui coûte moins de 5\,\% de stress sur la validation (essayés : 3, 5, 10, 30, 100\,\%).
-\item \textbf{Remplissage de l'écran retiré} : il étirait les dessins, et le stress en pixels remplit déjà le cadre.
+\item \textbf{Poids équilibré} = 1 / valeur moyenne du terme après l'étape 1 : le terme pèse alors autant que le stress (DeepGD).
+\item \textbf{Coefficient = 3\,\% du poids équilibré} : chaque métrique écran pèse environ 3\,\% du stress. Les coefficients diffèrent seulement à cause des unités.
+\item \textbf{Pourquoi 3\,\%} : le plus fort dosage qui coûte moins de 5\,\% de stress (validation).
 \end{itemize}
 \end{minipage}
 \end{frame}
@@ -520,23 +537,23 @@ Arête sur un nœud & 0 & 0,0646 & 0,0646 & 2,15 \\
  & \textbf{normalisé} $\downarrow$ & \textbf{d'arêtes} $\downarrow$ & \textbf{superposés} $\downarrow$ && & \textbf{par graphe} & \textbf{GPU} \\
 \midrule
 Aléatoire & 0,420 & 630,9 & 0,08\,\% && -- & 0,1 ms & -- \\
-Notre modèle & 0,063 & 28,3 & \textbf{0\,\%} && 841\,k & \textbf{25 ms} & 3 Mo \\
-Notre modèle + affinage & 0,062 & \textbf{28,0} & \textbf{0\,\%} && 841\,k & 247 ms & 3 Mo \\
+Notre modèle & 0,063 & 28,2 & \textbf{0\,\%} && 841\,k & 37 ms & 3 Mo \\
+Notre modèle + affinage & 0,062 & \textbf{27,8} & \textbf{0\,\%} && 841\,k & 265 ms & 3 Mo \\
 \midrule
-Kamada-Kawai & 0,062 & 30,0 & \textbf{0\,\%} && -- & 35 ms & -- \\
+Kamada-Kawai & 0,062 & 30,0 & \textbf{0\,\%} && -- & \textbf{35 ms} & -- \\
 DeepGD & 0,060 & 30,1 & 0,02\,\% && 42\,k & 36 ms & 6 Mo \\
-CoRe-GD & \textbf{0,059} & 29,0 & \textbf{0\,\%} && 930\,k & 58 ms & 2 Mo \\
+CoRe-GD & \textbf{0,059} & 28,9 & \textbf{0\,\%} && 930\,k & 58 ms & 2 Mo \\
 \bottomrule
 \end{tabular}}
 
 \vspace{0.2cm}
 \begin{tikzpicture}
-  \node[carte,draw=orange,fill=orangeclair,text width=0.9\textwidth,align=left,inner sep=4pt] {\small\textbf{Loss} : le stress seul (en pixels), puis un court affinage avec en plus le stress à l'échelle optimale et les métriques écran, chacune à environ 3\,\% du stress.};
+  \node[carte,draw=orange,fill=orangeclair,text width=0.9\textwidth,align=left,inner sep=4pt] {\small\textbf{Loss} : le stress seul (en pixels), puis un court fine-tuning avec en plus le stress à l'échelle optimale et les métriques écran, chacune à environ 3\,\% du stress.};
 \end{tikzpicture}
 
 \vspace{0.1cm}
 \begin{minipage}{0.96\textwidth}
-\scriptsize\textcolor{gris}{1\,000 graphes de test de Rome, même découpage pour les modèles appris. Stress : \emph{scale-normalized stress} (Ahmed et al., 2026) / nombre de paires. Temps d'un graphe à la fois, RTX 3060 (notre affinage : 18 ms par graphe par paquets de 64). Prétraitement compté pour DeepGD et CoRe-GD, pas pour nous.}
+\scriptsize\textcolor{gris}{1\,000 graphes de test de Rome. Stress : \emph{scale-normalized stress} (Ahmed et al., 2026). Temps d'un graphe à la fois, prétraitement compris, RTX 3060.}
 \end{minipage}
 \end{frame}
 
@@ -552,12 +569,12 @@ CoRe-GD & \textbf{0,059} & 29,0 & \textbf{0\,\%} && 930\,k & 58 ms & 2 Mo \\
  & \textbf{d'arêtes} $\downarrow$ & \textbf{préservé} $\uparrow$ & \textbf{croisement} $\downarrow$ & \textbf{d'aspect} $\uparrow$ & \textbf{angulaire} $\uparrow$ & \textbf{des sommets} $\uparrow$ \\
 \midrule
 Aléatoire & 0,467 & 0,047 & 0,942 & \textbf{0,875} & 0,015 & 0,017 \\
-Notre modèle & 0,187 & 0,428 & 0,556 & 0,750 & 0,192 & \textbf{0,052} \\
-Notre modèle + affinage & 0,184 & \textbf{0,438} & \textbf{0,521} & 0,759 & \textbf{0,270} & 0,048 \\
+Notre modèle & 0,187 & 0,427 & 0,555 & 0,751 & 0,192 & \textbf{0,052} \\
+Notre modèle + affinage & 0,185 & \textbf{0,437} & \textbf{0,522} & 0,759 & \textbf{0,268} & 0,048 \\
 \midrule
 Kamada-Kawai & 0,168 & 0,414 & 0,581 & 0,736 & 0,212 & 0,051 \\
-DeepGD & 0,190 & 0,427 & 0,612 & 0,738 & 0,158 & 0,039 \\
-CoRe-GD & \textbf{0,163} & 0,427 & 0,559 & 0,744 & 0,215 & \textbf{0,052} \\
+DeepGD & 0,190 & 0,427 & 0,609 & 0,738 & 0,157 & 0,039 \\
+CoRe-GD & \textbf{0,163} & 0,428 & 0,556 & 0,746 & 0,216 & \textbf{0,052} \\
 \bottomrule
 \end{tabular}}
 
@@ -699,7 +716,7 @@ Stress / croisements / nœuds superposés & 0,065 / 30,5 / 0,06\,\% & \textbf{0,
 \newcommand{\afaire}{\item[\textcolor{bleu}{\faSquare[regular]}]}
 \newcommand{\encours}{\item[\textcolor{orange}{\faMinusSquare[regular]}]}
 \newcommand{\fait}{\item[\textcolor{vert}{\faCheckSquare[regular]}]}
-\footnotesize
+\scriptsize
 \begin{columns}[T]
 \begin{column}{0.48\textwidth}
 \textbf{Évaluation}
@@ -717,11 +734,16 @@ Stress / croisements / nœuds superposés & 0,065 / 30,5 / 0,06\,\% & \textbf{0,
 \begin{itemize}
 \setlength{\itemsep}{0pt}
 \fait Recettes de CoRe-GD : sans gain
-\afaire Comprendre l'écart de stress restant
+\encours Comprendre l'écart de stress restant
 \afaire Longueurs d'arêtes plus uniformes
 \afaire Déplier les dessins repliés
+\encours Marge de 6 px entre nœuds et arêtes
 \afaire Accélérer l'affinage d'un graphe seul
+\afaire Un modèle attentif aux arêtes
+\afaire Affiner le modèle selon nos préférences (RL)
 \end{itemize}
+
+
 
 \vspace{10pt}
 \scriptsize\textcolor{gris}{\textcolor{vert}{\faCheckSquare[regular]} fait \quad \textcolor{orange}{\faMinusSquare[regular]} en cours \quad \textcolor{bleu}{\faSquare[regular]} à faire}
@@ -735,7 +757,6 @@ Stress / croisements / nœuds superposés & 0,065 / 30,5 / 0,06\,\% & \textbf{0,
 \afaire Des couleurs pour les nœuds et les arêtes
 \afaire Une taille d'image variable
 \afaire Nœuds de tailles variées, étiquettes de texte
-\afaire Un modèle attentif aux arêtes
 \end{itemize}
 
 \vspace{2pt}
@@ -746,7 +767,6 @@ Stress / croisements / nœuds superposés & 0,065 / 30,5 / 0,06\,\% & \textbf{0,
 \afaire Paires de stress tirées au hasard, image plus grande
 \end{itemize}
 
-
 \vspace{2pt}
 \textbf{Rendu du projet}
 \begin{itemize}
@@ -754,6 +774,9 @@ Stress / croisements / nœuds superposés & 0,065 / 30,5 / 0,06\,\% & \textbf{0,
 \afaire Démonstration
 \afaire Code nettoyé et documenté
 \end{itemize}
+
+
+
 
 \end{column}
 \end{columns}
